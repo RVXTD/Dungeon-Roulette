@@ -11,8 +11,6 @@ public class EnemyScript : MonoBehaviour
     public float patrolRadius = 15f;
     public float patrolSpeed = 3f;
     public float chaseSpeed = 5f;
-
-    public float health = 10f;
     public float timeBetweenAttacks = 1.5f;
 
     private NavMeshAgent agent;
