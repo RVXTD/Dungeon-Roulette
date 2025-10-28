@@ -1,4 +1,4 @@
-using System.Collections;
+Ôªøusing System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -17,7 +17,7 @@ public class SwordAttack : MonoBehaviour
     [Header("Hit Settings")]
     public float damage = 25f;            // damage per target
     public float range = 2.2f;            // how far from camera
-    public float radius = 0.45f;          // ìforgivenessî width of the sweep
+    public float radius = 0.45f;          // ‚Äúforgiveness‚Äù width of the sweep
     public LayerMask hitMask = ~0;        // layers we can hit (set in Inspector)
 
     [Header("Refs")]
