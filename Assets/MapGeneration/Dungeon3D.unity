@@ -417,7 +417,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   StartingRoom: {fileID: 0}
-  size: {x: 30, y: 30, z: 30}
+  size: {x: 31, y: 30, z: 31}
   roomCount: 100
   roomMaxSize: {x: 5, y: 5, z: 5}
   cubePrefab: {fileID: 7415050535990569633, guid: 3fb4ddafbd160274ba8f07a1cf8cd5ee, type: 3}
