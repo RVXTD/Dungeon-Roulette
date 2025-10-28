@@ -49,6 +49,7 @@ public class Generator3D : MonoBehaviour {
     Delaunay3D delaunay;
     HashSet<Prim.Edge> selectedEdges;
     List<Vertex> _roomVertices;
+    public List<Vector3> roomCenters = new List<Vector3>();
 
 
     void Start() {
@@ -60,6 +61,10 @@ public class Generator3D : MonoBehaviour {
         Triangulate();
         CreateHallways();
         PathfindHallways();
+        RecordRoomCenters();
+
+       
+        FindObjectOfType<SpawnManager>()?.Spawn();
     }
 
     void PlaceRooms() {
@@ -263,12 +268,30 @@ public class Generator3D : MonoBehaviour {
 
     void PlaceCube(Vector3Int location, Vector3Int size, Material material) {
         GameObject go = Instantiate(cubePrefab, location, Quaternion.identity);
-        go.GetComponent<Transform>().localScale = size;
-        go.GetComponent<MeshRenderer>().material = material;
+        go.transform.localScale = size;
+
+        var mr = go.GetComponent<MeshRenderer>();
+        if (mr) mr.material = material;
+
+        // Ensure there is a collider
+        var bc = go.GetComponent<BoxCollider>();
+        if (bc == null) bc = go.AddComponent<BoxCollider>();
+
+        // If your cube prefab’s pivot is at the corner (which your screenshots suggest),
+        // use a unit-sized collider and center it at (0.5, 0.5, 0.5) so it lines up with the scaled mesh.
+        bc.size = Vector3.one;
+        bc.center = new Vector3(0.5f, 0.5f, 0.5f);
+
+        // Optional: mark static for perf
+        go.isStatic = true;
     }
 
     void PlaceRoom(Vector3Int location, Vector3Int size) {
         PlaceCube(location, size, redMaterial);
+        // record center for spawning (single-floor: y=0)
+        Vector3 center = (Vector3)location + (Vector3)size / 2f;
+        center.y = 0f;
+        roomCenters.Add(center);
     }
 
     void PlaceHallway(Vector3Int location) {
@@ -277,5 +300,18 @@ public class Generator3D : MonoBehaviour {
 
     void PlaceStairs(Vector3Int location) {
         PlaceCube(location, new Vector3Int(1, 1, 1), greenMaterial);
+    }
+    public void RecordRoomCenters()
+    {
+        roomCenters.Clear();
+
+        foreach (var room in rooms)
+        {
+            Vector3 c = (Vector3)room.bounds.position + (Vector3)room.bounds.size / 2f;
+            c.y = 0f;
+            roomCenters.Add(c);
+        }
+
+        Debug.Log($"Recorded {roomCenters.Count} room centers.");
     }
 }
