@@ -14,7 +14,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
       propertyPath: m_LocalPosition.y
-      value: -0.12921071
+      value: -0.13
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
       propertyPath: m_LocalPosition.z
@@ -49,11 +49,11 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: -4620274835871441124, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
-      propertyPath: m_Materials.Array.data[0]
+      propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: 3efbad52818788240a2b6c17d96832a7, type: 2}
     - target: {fileID: -4620274835871441124, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
-      propertyPath: m_Materials.Array.data[1]
+      propertyPath: 'm_Materials.Array.data[1]'
       value: 
       objectReference: {fileID: 2100000, guid: 3efbad52818788240a2b6c17d96832a7, type: 2}
     - target: {fileID: 919132149155446097, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
@@ -74,20 +74,17 @@ PrefabInstance:
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 1516249974892545801}
+      addedObject: {fileID: 1339914866790405120}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 4000327673499111392}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 5744178004375859078}
+      addedObject: {fileID: 6682940678763679751}
   m_SourcePrefab: {fileID: 100100000, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
 --- !u!1 &5354596247540039912 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
   m_PrefabInstance: {fileID: 5084055159731830201}
   m_PrefabAsset: {fileID: 0}
---- !u!114 &1516249974892545801
+--- !u!114 &1339914866790405120
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -98,60 +95,25 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4742490774dbf8543924e1995ca36bac, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: 
-  walkSpeed: 2.5
+  m_EditorClassIdentifier: Assembly-CSharp::SonicController
+  walkSpeed: 5
   runSpeed: 25
   accel: 10
-  decel: 14
+  decel: 12
   turnSpeed: 180
   cc: {fileID: 0}
---- !u!136 &4000327673499111392
-CapsuleCollider:
+--- !u!114 &6682940678763679751
+MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5354596247540039912}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
   m_Enabled: 1
-  serializedVersion: 2
-  m_Radius: 0.62762165
-  m_Height: 3.0289056
-  m_Direction: 1
-  m_Center: {x: 0, y: 1.0144528, z: -0.12762165}
---- !u!54 &5744178004375859078
-Rigidbody:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5354596247540039912}
-  serializedVersion: 4
-  m_Mass: 1
-  m_Drag: 0
-  m_AngularDrag: 0.05
-  m_CenterOfMass: {x: 0, y: 0, z: 0}
-  m_InertiaTensor: {x: 1, y: 1, z: 1}
-  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ImplicitCom: 1
-  m_ImplicitTensor: 1
-  m_UseGravity: 1
-  m_IsKinematic: 1
-  m_Interpolate: 0
-  m_Constraints: 0
-  m_CollisionDetection: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 60cf96bd3d71217468c024cb6a02052d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerHealth
+  maxHealth: 100
+  currentHealth: 0
+  invulnSeconds: 0.5
