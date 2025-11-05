@@ -1,63 +1,74 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 public class PlayerHealth : MonoBehaviour, IDamageable
 {
     [Header("Health Settings")]
-    public float maxHealth = 100f;   // Max player health
-    public float currentHealth;      // Current health
+    public float maxHealth = 100f;
+    public float currentHealth;
 
-    [Header("Damage Cooldown")]
-    public float invulnSeconds = 0.5f;  // Short invulnerability period after hit
-    float invulnTimer;                  // Internal timer
+    [Header("Death Settings")]
+    [Tooltip("Scripts to disable when the player dies.")]
+    public MonoBehaviour[] scriptsToDisable; // drag your movement/camera scripts here
+    public GameObject deathUI;               // optional
 
-    // Implementing IDamageable
+    private bool isDead = false;
+
     public float CurrentHealth => currentHealth;
     public float MaxHealth => maxHealth;
 
-    void Awake()
+    void Start()
     {
-        // Start fully healed
         currentHealth = maxHealth;
     }
 
-    void Update()
-    {
-        // Count down invulnerability timer
-        if (invulnTimer > 0)
-            invulnTimer -= Time.deltaTime;
-    }
-
-    // Apply incoming damage
     public void TakeDamage(float amount)
     {
-        // Ignore damage during invulnerability
-        if (invulnTimer > 0)
-            return;
+        if (isDead) return;
 
-        // Subtract health safely
         currentHealth = Mathf.Clamp(currentHealth - amount, 0, maxHealth);
+        Debug.Log($"Player took {amount} damage. HP: {currentHealth}");
 
-        // Reset invulnerability window
-        invulnTimer = invulnSeconds;
-
-        Debug.Log($"PLAYER took {amount} damage. HP: {currentHealth}");
-
-        // Trigger death logic
         if (currentHealth <= 0)
             Die();
     }
 
-    // Heal the player
-    public void Heal(float amount)
+    private void Die()
     {
-        currentHealth = Mathf.Clamp(currentHealth + amount, 0, maxHealth);
-        Debug.Log($"PLAYER healed {amount}. HP: {currentHealth}");
+        if (isDead) return;
+        isDead = true;
+        Debug.Log("Player has died!");
+
+        // Disable movement/camera scripts
+        foreach (var script in scriptsToDisable)
+        {
+            if (script != null)
+            {
+                script.enabled = false;
+                Debug.Log($"Disabled: {script.GetType().Name}");
+            }
+        }
+
+        // Unlock mouse for menus or respawn
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+
+        // Show death UI if assigned
+        if (deathUI) deathUI.SetActive(true);
+
+        // Stop physics movement if Rigidbody present
+        var rb = GetComponent<Rigidbody>();
+        if (rb)
+        {
+            rb.linearVelocity = Vector3.zero;
+            rb.isKinematic = true;
+        }
     }
 
-    // Handle player death
-    void Die()
+    public void Heal(float amount)
     {
-        Debug.Log("PLAYER has died!");
-        // TODO: reload scene, show game over, etc.
+        if (isDead) return;
+
+        currentHealth = Mathf.Clamp(currentHealth + amount, 0, maxHealth);
+        Debug.Log($"Player healed {amount}. HP: {currentHealth}");
     }
 }

@@ -1,0 +1,119 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &648032157617728420
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: -4.771064
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: -0.13
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 10.097923
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -4620274835871441124, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 3efbad52818788240a2b6c17d96832a7, type: 2}
+    - target: {fileID: -4620274835871441124, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
+      propertyPath: 'm_Materials.Array.data[1]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 3efbad52818788240a2b6c17d96832a7, type: 2}
+    - target: {fileID: 919132149155446097, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
+      propertyPath: m_Name
+      value: SonicMovement
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
+      propertyPath: m_TagString
+      value: Player
+      objectReference: {fileID: 0}
+    - target: {fileID: 5866666021909216657, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
+      propertyPath: m_Controller
+      value: 
+      objectReference: {fileID: 9100000, guid: b930f392c5d1c3a409f7bb39eda739d0, type: 2}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 456447947204967839}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 9215869725951072428}
+  m_SourcePrefab: {fileID: 100100000, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
+--- !u!1 &306011685609051893 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 3b05f4cd1ad3376418999b5940b7c5d3, type: 3}
+  m_PrefabInstance: {fileID: 648032157617728420}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &456447947204967839
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 306011685609051893}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 60cf96bd3d71217468c024cb6a02052d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerHealth
+  maxHealth: 100
+  currentHealth: 0
+  invulnSeconds: 0.5
+--- !u!114 &9215869725951072428
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 306011685609051893}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fa95cc5a3bc43c44c9a0460bf2193eef, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SonicController
+  walkSpeed: 5
+  runSpeed: 25
+  accel: 10
+  decel: 12
+  turnSpeed: 180
+  cc: {fileID: 0}

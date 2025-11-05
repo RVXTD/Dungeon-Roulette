@@ -13,120 +13,115 @@ public class EnemyScript : MonoBehaviour
     public Transform player;
 
     [Header("Sensing")]
-    [Tooltip("Begin chasing when the player is within this range. Outside of this, go back to patrol immediately.")]
     public float detectionRange = 12f;
 
     [Header("Ranges")]
-    [Tooltip("How close we must be to start attacking.")]
     public float attackRange = 2f;
-    [Tooltip("Random patrol radius around the current position.")]
     public float patrolRadius = 15f;
 
     [Header("Speeds")]
-    [Tooltip("NavMeshAgent speed while patrolling.")]
     public float patrolSpeed = 1.8f;
-    [Tooltip("NavMeshAgent speed while chasing.")]
     public float chaseSpeed = 3.6f;
 
     [Header("Patrol Behavior")]
-    [Tooltip("How long to pause at each patrol point before picking a new one.")]
     public float patrolPauseTime = 1.5f;
 
     [Header("Combat")]
     public float attackDamage = 10f;
-    public float timeBetweenAttacks = 1.5f;
+    public float timeBetweenAttacks = 1.2f;
+    public float attackWindupTime = 0.4f;
+    public float hitActiveTime = 0.3f;
 
-    [Header("Death Settings")]
-    public float lifetime = 15f;
-    public float deathAnimationLength = 3f;
-    public float fadeDuration = 2f;
+    [Header("Death FX")]
+    [Tooltip("Wait this long after Die trigger before fading (lets death anim start).")]
+    public float fadeDelay = 0.4f;
+    [Tooltip("How long the visual fade takes.")]
+    public float fadeDuration = 1.2f;
+    [Tooltip("Remove colliders during fade so it doesn't block player.")]
+    public bool disableCollidersOnDeath = true;
+    [Tooltip("Destroy the GameObject after fading.")]
+    public bool destroyAfterFade = true;
 
     // internals
-    private bool isDead = false;
-    private bool isPausing = false;
-    private float pauseTimer = 0f;
-
     private NavMeshAgent agent;
     private Animator anim;
     private EnemyState currentState = EnemyState.Patrol;
 
+    private bool isDead = false;
+    private bool isPausing = false;
+    private float pauseTimer = 0f;
     private Vector3 patrolPoint;
     private float lastAttackTime;
 
     // animator hashes
-    private static readonly int MoveSpeed = Animator.StringToHash("MoveSpeed");
+    private static readonly int MoveSpeedHash = Animator.StringToHash("MoveSpeed");
     private static readonly int AttackTrigger = Animator.StringToHash("Attack");
     private static readonly int DieTrigger = Animator.StringToHash("Die");
 
-    // renderers/materials for fade on death
-    private List<(Renderer rend, Material[] mats)> rendererMats;
+    // fade caches
+    private Renderer[] _renderers;
+    private readonly List<Material[]> _instancedMatsPerRenderer = new List<Material[]>();
+    private static readonly int BaseColorProp = Shader.PropertyToID("_BaseColor"); // URP Lit
+    private static readonly int ColorProp = Shader.PropertyToID("_Color");     // Standard
 
     void Awake()
     {
         agent = GetComponent<NavMeshAgent>();
-        anim = GetComponentInChildren<Animator>(true);
-        if (!anim) Debug.LogError("EnemyScript: No Animator found on enemy.");
+        anim = GetComponent<Animator>() ?? GetComponentInChildren<Animator>(true);
+
+        if (!anim) Debug.LogError("EnemyScript: No Animator found.");
+        if (!agent) Debug.LogError("EnemyScript: No NavMeshAgent found.");
+
+        _renderers = GetComponentsInChildren<Renderer>(true);
     }
 
     void Start()
     {
         agent.stoppingDistance = Mathf.Max(0f, attackRange - 0.2f);
-        EnterPatrol();                  // ensures agent is moving & has a destination
-        StartCoroutine(DieAfterTime(lifetime));
+        agent.updateRotation = false; // we rotate manually in Face()
+        EnterPatrol();
     }
 
     void Update()
     {
         if (isDead || !player)
         {
-            if (isDead && anim) anim.SetFloat(MoveSpeed, 0f);
+            SetMoveSpeed(0f);
             return;
         }
 
-        if (anim && anim.runtimeAnimatorController)
-            anim.SetFloat(MoveSpeed, agent.velocity.magnitude);
-
         float dist = Vector3.Distance(transform.position, player.position);
 
-        // --- State transitions (NO lose-sight buffer) ---
+        // state transitions
         if (currentState == EnemyState.Patrol && dist <= detectionRange)
-        {
             EnterChase();
-        }
         else if ((currentState == EnemyState.Chase || currentState == EnemyState.Attack) && dist > detectionRange)
-        {
-            // Player left detection range -> go straight back to patrol
             EnterPatrol();
-        }
 
-        // --- State behavior ---
+        // state ticks
         switch (currentState)
         {
-            case EnemyState.Patrol:
-                PatrolTick();
-                break;
-            case EnemyState.Chase:
-                ChaseTick(dist);
-                break;
-            case EnemyState.Attack:
-                AttackTick(dist);
-                break;
+            case EnemyState.Patrol: PatrolTick(); break;
+            case EnemyState.Chase: ChaseTick(dist); break;
+            case EnemyState.Attack: AttackTick(dist); break;
         }
+
+        SetMoveSpeed(agent.velocity.magnitude);
     }
 
-    // =========================
-    // STATE ENTER HELPERS
-    // =========================
+    // -------------------
+    // State enters
+    // -------------------
     private void EnterPatrol()
     {
         currentState = EnemyState.Patrol;
-
-        // reset flags that could cause idling
         isPausing = false;
         pauseTimer = 0f;
-        agent.isStopped = false;            // <- critical to avoid getting stuck idle
-        agent.speed = patrolSpeed;
-
+        if (agent)
+        {
+            agent.isStopped = false;
+            agent.speed = patrolSpeed;
+        }
         SetNextPatrolPoint(true);
     }
 
@@ -135,124 +130,155 @@ public class EnemyScript : MonoBehaviour
         currentState = EnemyState.Chase;
         isPausing = false;
         pauseTimer = 0f;
-        agent.isStopped = false;            // ensure we resume movement
-        agent.speed = chaseSpeed;
+        if (agent)
+        {
+            agent.isStopped = false;
+            agent.speed = chaseSpeed;
+        }
     }
 
     private void EnterAttack()
     {
         currentState = EnemyState.Attack;
-        agent.isStopped = true;             // stand still while attacking
-        agent.velocity = Vector3.zero;
-        agent.ResetPath();
+        if (agent)
+        {
+            agent.isStopped = true;
+            agent.velocity = Vector3.zero;
+            agent.ResetPath();
+        }
+
+        // allow an immediate first swing
+        lastAttackTime = Time.time - timeBetweenAttacks;
     }
 
-    // =========================
-    // PATROL
-    // =========================
+    // -------------------
+    // Patrol
+    // -------------------
     private void PatrolTick()
     {
+        if (agent == null) return;
+
         if (isPausing)
         {
-            // stay idle for a bit
             pauseTimer += Time.deltaTime;
             if (pauseTimer >= patrolPauseTime)
             {
                 isPausing = false;
                 pauseTimer = 0f;
-                agent.isStopped = false; // resume moving
+                agent.isStopped = false;
                 SetNextPatrolPoint(false);
             }
             return;
         }
 
-        // ensure we actually have somewhere to go
         if (!agent.hasPath || agent.remainingDistance <= agent.stoppingDistance + 0.05f)
         {
-            // reached point -> start a short idle pause, then pick next
             agent.isStopped = true;
             isPausing = true;
             pauseTimer = 0f;
-            return;
+        }
+        else
+        {
+            Face(agent.steeringTarget);
         }
     }
 
-    private void SetNextPatrolPoint(bool forceNewCenter)
+    private void SetNextPatrolPoint(bool recenter)
     {
-        // Optionally recenter the random area after a chase to avoid picking current pos again
-        Vector3 center = forceNewCenter ? transform.position : patrolPoint;
+        Vector3 center = recenter ? transform.position : patrolPoint;
 
-        // Try multiple samples for a good point on the NavMesh
         for (int i = 0; i < 10; i++)
         {
             Vector3 candidate = center + Random.insideUnitSphere * patrolRadius;
             if (NavMesh.SamplePosition(candidate, out var hit, 2f, NavMesh.AllAreas))
             {
                 patrolPoint = hit.position;
-                agent.isStopped = false; // make sure we're moving
-                agent.SetDestination(patrolPoint);
+                if (agent)
+                {
+                    agent.isStopped = false;
+                    agent.SetDestination(patrolPoint);
+                }
                 return;
             }
         }
 
-        // fallback: nudge forward a bit so we don't sit exactly on our current position
-        Vector3 forward = transform.forward;
-        if (NavMesh.SamplePosition(transform.position + forward * 2f, out var hit2, 2f, NavMesh.AllAreas))
+        if (NavMesh.SamplePosition(transform.position + transform.forward * 2f, out var hit2, 2f, NavMesh.AllAreas))
         {
             patrolPoint = hit2.position;
-            agent.isStopped = false;
-            agent.SetDestination(patrolPoint);
+            if (agent)
+            {
+                agent.isStopped = false;
+                agent.SetDestination(patrolPoint);
+            }
         }
     }
 
-    // =========================
-    // CHASE
-    // =========================
+    // -------------------
+    // Chase
+    // -------------------
     private void ChaseTick(float distanceToPlayer)
     {
-        agent.isStopped = false;        // just in case we came from an idle pause
+        if (agent == null || player == null) return;
+
+        agent.isStopped = false;
         agent.speed = chaseSpeed;
         agent.SetDestination(player.position);
+        Face(agent.steeringTarget);
 
         if (distanceToPlayer <= attackRange)
-        {
             EnterAttack();
-        }
     }
 
-    // =========================
-    // ATTACK
-    // =========================
+    // -------------------
+    // Attack
+    // -------------------
     private void AttackTick(float distanceToPlayer)
     {
-        // Face the player smoothly
-        Vector3 look = player.position - transform.position; look.y = 0f;
-        if (look != Vector3.zero)
-            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(look), 10f * Time.deltaTime);
+        if (player == null) return;
 
-        if (Time.time > lastAttackTime + timeBetweenAttacks)
-        {
-            if (anim) anim.SetTrigger(AttackTrigger);
-            lastAttackTime = Time.time;
-            // TODO: apply damage via hitbox or player health script
-        }
-
-        // out of range? go back to chase
+        Face(player.position);
+        TryAttack();
         if (distanceToPlayer > attackRange)
-        {
             EnterChase();
+    }
+
+    private void TryAttack()
+    {
+        if (Time.time >= lastAttackTime + timeBetweenAttacks)
+        {
+            lastAttackTime = Time.time;
+            if (anim) anim.SetTrigger(AttackTrigger);
+            StartCoroutine(AttackWindow());
         }
     }
 
-    // =========================
-    // DEATH / FADE
-    // =========================
-    private IEnumerator DieAfterTime(float seconds)
+    private IEnumerator AttackWindow()
     {
-        yield return new WaitForSeconds(seconds);
-        DoDeath();
+        // Wait for the animation to reach the hit frame
+        yield return new WaitForSeconds(attackWindupTime);
+
+        // Deal damage once during the swing
+        if (player != null)
+        {
+            float dist = Vector3.Distance(transform.position, player.position);
+            if (dist <= attackRange + 0.5f)
+            {
+                var dmg = player.GetComponent<IDamageable>();
+                if (dmg != null)
+                {
+                    dmg.TakeDamage(attackDamage);
+                    Debug.Log($"{name} hit {player.name} for {attackDamage} damage!");
+                }
+            }
+        }
+
+        // Wait out the rest of the active time
+        yield return new WaitForSeconds(hitActiveTime);
     }
 
+    // -------------------
+    // Death + Fade
+    // -------------------
     public void DoDeath()
     {
         if (isDead) return;
@@ -263,104 +289,141 @@ public class EnemyScript : MonoBehaviour
             agent.isStopped = true;
             agent.velocity = Vector3.zero;
             agent.ResetPath();
-            agent.enabled = false;
         }
-
-        foreach (var col in GetComponentsInChildren<Collider>())
-            col.enabled = false;
 
         if (anim) anim.SetTrigger(DieTrigger);
 
-        CacheRendererMaterialsForFade();
-        StartCoroutine(FadeOutAndDestroy());
+        // stop other behaviors
+        currentState = EnemyState.Patrol;
+        isPausing = false;
+
+        StartCoroutine(DeathRoutine());
     }
 
-    private void CacheRendererMaterialsForFade()
+    private IEnumerator DeathRoutine()
     {
-        rendererMats = new List<(Renderer, Material[])>();
-        foreach (var rend in GetComponentsInChildren<Renderer>(true))
+        if (disableCollidersOnDeath)
         {
-            var mats = rend.materials; // instanced
-            rendererMats.Add((rend, mats));
-
-            foreach (var m in mats)
-            {
-                if (!m) continue;
-                if (m.HasProperty("_Color"))
-                {
-                    var c = m.GetColor("_Color"); c.a = 1f; m.SetColor("_Color", c);
-                }
-                if (m.HasProperty("_BaseColor"))
-                {
-                    var bc = m.GetColor("_BaseColor"); bc.a = 1f; m.SetColor("_BaseColor", bc);
-                }
-                SetMaterialToFade(m);
-            }
+            foreach (var col in GetComponentsInChildren<Collider>(true))
+                col.enabled = false;
         }
-    }
 
-    private IEnumerator FadeOutAndDestroy()
-    {
-        yield return new WaitForSeconds(Mathf.Max(0f, deathAnimationLength * 0.5f));
+        if (fadeDelay > 0f)
+            yield return new WaitForSeconds(fadeDelay);
+
+        PrepareInstancedTransparentMaterials();
 
         float t = 0f;
-        var start = new List<(Material m, bool hasColor, Color c, bool hasBase, Color bc)>();
-        foreach (var pair in rendererMats)
-        {
-            foreach (var m in pair.mats)
-            {
-                bool hc = m.HasProperty("_Color");
-                bool hb = m.HasProperty("_BaseColor");
-                start.Add((m, hc, hc ? m.GetColor("_Color") : Color.white,
-                              hb, hb ? m.GetColor("_BaseColor") : Color.white));
-            }
-        }
-
         while (t < fadeDuration)
         {
-            float a = Mathf.Lerp(1f, 0f, t / fadeDuration);
-            foreach (var s in start)
-            {
-                if (s.hasColor) { var c = s.c; c.a = a; s.m.SetColor("_Color", c); }
-                if (s.hasBase) { var bc = s.bc; bc.a = a; s.m.SetColor("_BaseColor", bc); }
-            }
             t += Time.deltaTime;
+            float a = Mathf.Lerp(1f, 0f, Mathf.Clamp01(t / fadeDuration));
+            SetAlphaOnInstancedMaterials(a);
             yield return null;
         }
+        SetAlphaOnInstancedMaterials(0f);
 
-        foreach (var s in start)
-        {
-            if (s.hasColor) { var c = s.c; c.a = 0f; s.m.SetColor("_Color", c); }
-            if (s.hasBase) { var bc = s.bc; bc.a = 0f; s.m.SetColor("_BaseColor", bc); }
-        }
-
-        yield return new WaitForSeconds(0.5f);
-        Destroy(gameObject);
+        if (destroyAfterFade) Destroy(gameObject);
+        else gameObject.SetActive(false);
     }
 
-    private static void SetMaterialToFade(Material mat)
+    private void PrepareInstancedTransparentMaterials()
     {
-        if (!mat) return;
+        _instancedMatsPerRenderer.Clear();
 
-        // Built-in Standard
-        if (mat.HasProperty("_Mode"))
+        foreach (var r in _renderers)
         {
-            mat.SetFloat("_Mode", 2f); // Fade
-            mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-            mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-            mat.SetInt("_ZWrite", 0);
-            mat.DisableKeyword("_ALPHATEST_ON");
-            mat.EnableKeyword("_ALPHABLEND_ON");
-            mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
-            mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            if (!r || r.sharedMaterials == null || r.sharedMaterials.Length == 0) continue;
+
+            var shared = r.sharedMaterials;
+            var instanced = new Material[shared.Length];
+
+            for (int i = 0; i < shared.Length; i++)
+            {
+                var m = shared[i];
+                if (m == null) continue;
+
+                var mi = new Material(m);
+
+                // Built-in Standard: set Rendering Mode = Fade
+                if (mi.HasProperty("_Mode"))
+                {
+                    mi.SetFloat("_Mode", 2f); // 0 Opaque, 1 Cutout, 2 Fade, 3 Transparent
+                    mi.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                    mi.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                    mi.SetInt("_ZWrite", 0);
+                    mi.DisableKeyword("_ALPHATEST_ON");
+                    mi.EnableKeyword("_ALPHABLEND_ON");
+                    mi.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+                    mi.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+                }
+
+                // URP Lit: Surface = Transparent
+                if (mi.HasProperty("_Surface")) // 0 Opaque, 1 Transparent
+                {
+                    mi.SetFloat("_Surface", 1f);
+                    mi.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+                    mi.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+                }
+
+                instanced[i] = mi;
+            }
+
+            r.materials = instanced; // assign instanced array so we don't edit shared assets
+            _instancedMatsPerRenderer.Add(instanced);
         }
-        // URP/HDRP Lit
-        if (mat.HasProperty("_Surface"))
-            mat.SetFloat("_Surface", 1f); // Transparent
+    }
+
+    private void SetAlphaOnInstancedMaterials(float alpha)
+    {
+        foreach (var mats in _instancedMatsPerRenderer)
+        {
+            if (mats == null) continue;
+            for (int i = 0; i < mats.Length; i++)
+            {
+                var m = mats[i];
+                if (m == null) continue;
+
+                if (m.HasProperty(BaseColorProp))
+                {
+                    var c = m.GetColor(BaseColorProp);
+                    c.a = alpha;
+                    m.SetColor(BaseColorProp, c);
+                }
+                else if (m.HasProperty(ColorProp))
+                {
+                    var c = m.GetColor(ColorProp);
+                    c.a = alpha;
+                    m.SetColor(ColorProp, c);
+                }
+            }
+        }
+    }
+
+    // -------------------
+    // Helpers
+    // -------------------
+    private void Face(Vector3 worldTarget)
+    {
+        Vector3 dir = worldTarget - transform.position;
+        dir.y = 0f;
+        if (dir.sqrMagnitude > 0.0001f)
+        {
+            Quaternion target = Quaternion.LookRotation(dir);
+            transform.rotation = Quaternion.Slerp(transform.rotation, target, 10f * Time.deltaTime);
+        }
+    }
+
+    private void SetMoveSpeed(float v)
+    {
+        if (anim) anim.SetFloat(MoveSpeedHash, v);
     }
 
     void OnDrawGizmosSelected()
     {
-        Gizmos.color = Color.yellow; Gizmos.DrawWireSphere(transform.position, detectionRange);
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawWireSphere(transform.position, detectionRange);
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position, attackRange);
     }
 }
