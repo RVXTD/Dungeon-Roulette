@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
@@ -18,13 +17,13 @@ public class EnemySpawner : MonoBehaviour
     public float sampleMaxDistance = 5f;
     public int areaMask = NavMesh.AllAreas;
 
-    [Header("Optional Defaults for New Enemies")]
-    public float overrideLifetime = -1f;
-    public float overrideDeathAnimLen = -1f;
-    public float overrideFadeDuration = -1f;
+    // (Legacy overrides removed – they referenced fields that no longer exist)
+    // public float overrideLifetime = -1f;
+    // public float overrideDeathAnimLen = -1f;
+    // public float overrideFadeDuration = -1f;
 
-    [Header("Lifetime (optional)")]
-    public float lifetime = -1f;  // -1 = infinite
+    [Header("Lifetime (optional – not used by EnemyScript now)")]
+    public float lifetime = -1f;  // -1 = infinite (kept here in case you want to use it externally)
 
     // runtime
     private readonly List<GameObject> alive = new List<GameObject>();
@@ -41,9 +40,9 @@ public class EnemySpawner : MonoBehaviour
 
     void Update()
     {
-        // Press R to spawn (keyboard or gamepad "Y")
-        if ((Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)   // [NEW INPUT]
-            || (Gamepad.current != null && Gamepad.current.buttonNorth.wasPressedThisFrame)) // [NEW INPUT]
+        // Press R to spawn (keyboard) or gamepad Y
+        if ((Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame) ||
+            (Gamepad.current != null && Gamepad.current.buttonNorth.wasPressedThisFrame))
         {
             SpawnBatch();
         }
@@ -90,6 +89,7 @@ public class EnemySpawner : MonoBehaviour
         {
             attempts++;
 
+            // pick a ring around the player
             Vector3 random = Random.insideUnitSphere;
             random.y = 0f;
             Vector3 tryPos = player.position + random.normalized * Random.Range(spawnRadius * 0.5f, spawnRadius);
@@ -101,13 +101,13 @@ public class EnemySpawner : MonoBehaviour
 
                 var go = Instantiate(enemyPrefab, spawnPos, rot);
 
-                // Wire up EnemyScript with player + optional overrides
+                // Wire up EnemyScript (assign player target!)
                 var es = go.GetComponent<EnemyScript>();
-                if(es != null)
-{
-                    if (overrideDeathAnimLen >= 0f) es.deathAnimationLength = overrideDeathAnimLen;
-                    if (overrideFadeDuration >= 0f) es.fadeDuration = overrideFadeDuration;
+                if (es != null)
+                {
+                    es.player = player; // <-- important so the enemy knows who to chase/attack
                 }
+
                 alive.Add(go);
                 spawned++;
             }
