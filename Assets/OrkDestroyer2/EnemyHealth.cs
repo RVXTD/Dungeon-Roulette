@@ -1,38 +1,65 @@
 using UnityEngine;
+using System.Collections;
 
 public class EnemyHealth : MonoBehaviour, IDamageable
 {
     [Header("Health Settings")]
-    public float maxHealth = 100f;   // maximum HP
-    public float currentHealth;      // current HP
+    public float maxHealth = 100f;
+    public float currentHealth;
+
+    public float flashDuration = 0.1f;
+    public Color flashColor = Color.red;
+
+    private EnemyScript enemyScript;
+    private Renderer[] renderers;
+    private Color[] originalColors;
 
     public float CurrentHealth => currentHealth;
     public float MaxHealth => maxHealth;
 
-    private EnemyScript enemyScript; // reference to control death behavior
-
     void Awake()
     {
-        // Try to find the EnemyScript on the same GameObject
         enemyScript = GetComponent<EnemyScript>();
+        renderers = GetComponentsInChildren<Renderer>();
+
+        originalColors = new Color[renderers.Length];
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            if (renderers[i].material.HasProperty("_Color"))
+                originalColors[i] = renderers[i].material.color;
+        }
     }
 
     void Start()
     {
-        // Start with full health
         currentHealth = maxHealth;
     }
 
     public void TakeDamage(float amount)
     {
-        // Subtract damage
         currentHealth = Mathf.Clamp(currentHealth - amount, 0, maxHealth);
         Debug.Log($"{name} took {amount} damage. HP: {currentHealth}");
 
-        // When HP hits zero, trigger death logic
+        StartCoroutine(FlashRed());
+
         if (currentHealth <= 0)
-        {
             Die();
+    }
+
+    private IEnumerator FlashRed()
+    {
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            if (renderers[i].material.HasProperty("_Color"))
+                renderers[i].material.color = flashColor;
+        }
+
+        yield return new WaitForSeconds(flashDuration);
+
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            if (renderers[i].material.HasProperty("_Color"))
+                renderers[i].material.color = originalColors[i];
         }
     }
 
@@ -46,15 +73,9 @@ public class EnemyHealth : MonoBehaviour, IDamageable
     {
         Debug.Log($"{name} has died!");
 
-        // If the EnemyScript exists, use its built-in death sequence
         if (enemyScript != null)
-        {
             enemyScript.DoDeath();
-        }
         else
-        {
-            // fallback if enemy script is missing
             Destroy(gameObject);
-        }
     }
 }
