@@ -1,4 +1,6 @@
 ﻿using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
 
 public class PlayerHealth : MonoBehaviour, IDamageable
 {
@@ -6,12 +8,18 @@ public class PlayerHealth : MonoBehaviour, IDamageable
     public float maxHealth = 100f;
     public float currentHealth;
 
+    [Header("UI")]
+    public Slider healthBarSlider;
+    public TextMeshProUGUI healthBarValueText;
+
     [Header("Death Settings")]
     [Tooltip("Scripts to disable when the player dies.")]
-    public MonoBehaviour[] scriptsToDisable; // drag your movement/camera scripts here
-    public GameObject deathUI;               // optional
+    public MonoBehaviour[] scriptsToDisable;
+    public GameObject deathUI;
 
     private bool isDead = false;
+
+    public static bool PlayerIsDead { get; private set; } = false;
 
     public float CurrentHealth => currentHealth;
     public float MaxHealth => maxHealth;
@@ -19,6 +27,15 @@ public class PlayerHealth : MonoBehaviour, IDamageable
     void Start()
     {
         currentHealth = maxHealth;
+
+        if (healthBarSlider != null)
+        {
+            healthBarSlider.minValue = 0f;
+            healthBarSlider.maxValue = maxHealth;
+            healthBarSlider.value = currentHealth;
+        }
+
+        UpdateHealthUI();
     }
 
     public void TakeDamage(float amount)
@@ -28,17 +45,38 @@ public class PlayerHealth : MonoBehaviour, IDamageable
         currentHealth = Mathf.Clamp(currentHealth - amount, 0, maxHealth);
         Debug.Log($"Player took {amount} damage. HP: {currentHealth}");
 
+        UpdateHealthUI();
+
         if (currentHealth <= 0)
             Die();
+    }
+
+    public void Heal(float amount)
+    {
+        if (isDead) return;
+
+        currentHealth = Mathf.Clamp(currentHealth + amount, 0, maxHealth);
+        Debug.Log($"Player healed {amount}. HP: {currentHealth}");
+
+        UpdateHealthUI();
+    }
+
+    private void UpdateHealthUI()
+    {
+        if (healthBarSlider != null)
+            healthBarSlider.value = currentHealth;
+
+        if (healthBarValueText != null)
+            healthBarValueText.text = $"{Mathf.RoundToInt(currentHealth)}/{Mathf.RoundToInt(maxHealth)}";
     }
 
     private void Die()
     {
         if (isDead) return;
         isDead = true;
+        PlayerIsDead = true;
         Debug.Log("Player has died!");
 
-        // Disable movement/camera scripts
         foreach (var script in scriptsToDisable)
         {
             if (script != null)
@@ -48,14 +86,11 @@ public class PlayerHealth : MonoBehaviour, IDamageable
             }
         }
 
-        // Unlock mouse for menus or respawn
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
 
-        // Show death UI if assigned
         if (deathUI) deathUI.SetActive(true);
 
-        // Stop physics movement if Rigidbody present
         var rb = GetComponent<Rigidbody>();
         if (rb)
         {
@@ -64,11 +99,11 @@ public class PlayerHealth : MonoBehaviour, IDamageable
         }
     }
 
-    public void Heal(float amount)
+    public void ResetPlayer()
     {
-        if (isDead) return;
-
-        currentHealth = Mathf.Clamp(currentHealth + amount, 0, maxHealth);
-        Debug.Log($"Player healed {amount}. HP: {currentHealth}");
+        isDead = false;
+        PlayerIsDead = false;
+        currentHealth = maxHealth;
+        UpdateHealthUI();
     }
 }

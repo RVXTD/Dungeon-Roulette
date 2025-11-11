@@ -42,7 +42,6 @@ public class EnemyScript : MonoBehaviour
     [Tooltip("Destroy the GameObject after fading.")]
     public bool destroyAfterFade = true;
 
-    // internals
     private NavMeshAgent agent;
     private Animator anim;
     private EnemyState currentState = EnemyState.Patrol;
@@ -61,8 +60,8 @@ public class EnemyScript : MonoBehaviour
     // fade caches
     private Renderer[] _renderers;
     private readonly List<Material[]> _instancedMatsPerRenderer = new List<Material[]>();
-    private static readonly int BaseColorProp = Shader.PropertyToID("_BaseColor"); // URP Lit
-    private static readonly int ColorProp = Shader.PropertyToID("_Color");     // Standard
+    private static readonly int BaseColorProp = Shader.PropertyToID("_BaseColor");
+    private static readonly int ColorProp = Shader.PropertyToID("_Color");
 
     void Awake()
     {
@@ -78,27 +77,43 @@ public class EnemyScript : MonoBehaviour
     void Start()
     {
         agent.stoppingDistance = Mathf.Max(0f, attackRange - 0.2f);
-        agent.updateRotation = false; // we rotate manually in Face()
+        agent.updateRotation = false;
         EnterPatrol();
     }
 
     void Update()
     {
-        if (isDead || !player)
+        if (isDead || !player || PlayerHealth.PlayerIsDead)
         {
+            if (agent)
+            {
+                agent.isStopped = true;
+                agent.velocity = Vector3.zero;
+                agent.ResetPath();
+            }
+
             SetMoveSpeed(0f);
+
+            if (anim && PlayerHealth.PlayerIsDead)
+            {
+                anim.ResetTrigger(AttackTrigger);
+                anim.SetFloat(MoveSpeedHash, 0f);
+            }
+
             return;
         }
 
         float dist = Vector3.Distance(transform.position, player.position);
 
-        // state transitions
+        // ------------------------------
+        // BASIC MOVEMENT AI
+        // Handles Patrol to Chase transitions based on player distance.
+        // ------------------------------
         if (currentState == EnemyState.Patrol && dist <= detectionRange)
             EnterChase();
         else if ((currentState == EnemyState.Chase || currentState == EnemyState.Attack) && dist > detectionRange)
             EnterPatrol();
 
-        // state ticks
         switch (currentState)
         {
             case EnemyState.Patrol: PatrolTick(); break;
@@ -147,13 +162,13 @@ public class EnemyScript : MonoBehaviour
             agent.ResetPath();
         }
 
-        // allow an immediate first swing
         lastAttackTime = Time.time - timeBetweenAttacks;
     }
 
-    // -------------------
-    // Patrol
-    // -------------------
+    // ------------------------------
+    // BASIC MOVEMENT AI
+    // Patrol behavior: moves between random points and pauses briefly.
+    // ------------------------------
     private void PatrolTick()
     {
         if (agent == null) return;
@@ -213,9 +228,10 @@ public class EnemyScript : MonoBehaviour
         }
     }
 
-    // -------------------
-    // Chase
-    // -------------------
+    // ------------------------------
+    // BASIC MOVEMENT AI
+    // Chase behavior: follows player using NavMeshAgent.
+    // ------------------------------
     private void ChaseTick(float distanceToPlayer)
     {
         if (agent == null || player == null) return;
@@ -229,21 +245,27 @@ public class EnemyScript : MonoBehaviour
             EnterAttack();
     }
 
-    // -------------------
-    // Attack
-    // -------------------
+    // ------------------------------
+    // ATTACK / COMBAT AI 
+    // Attack timing, hit windows, and cooldowns.
+    // ------------------------------
     private void AttackTick(float distanceToPlayer)
     {
         if (player == null) return;
 
+        if (PlayerHealth.PlayerIsDead) return;
+
         Face(player.position);
         TryAttack();
+
         if (distanceToPlayer > attackRange)
             EnterChase();
     }
 
     private void TryAttack()
     {
+        if (PlayerHealth.PlayerIsDead) return;
+
         if (Time.time >= lastAttackTime + timeBetweenAttacks)
         {
             lastAttackTime = Time.time;
@@ -254,10 +276,10 @@ public class EnemyScript : MonoBehaviour
 
     private IEnumerator AttackWindow()
     {
-        // Wait for the animation to reach the hit frame
         yield return new WaitForSeconds(attackWindupTime);
 
-        // Deal damage once during the swing
+        if (isDead || PlayerHealth.PlayerIsDead) yield break;
+
         if (player != null)
         {
             float dist = Vector3.Distance(transform.position, player.position);
@@ -272,13 +294,13 @@ public class EnemyScript : MonoBehaviour
             }
         }
 
-        // Wait out the rest of the active time
         yield return new WaitForSeconds(hitActiveTime);
     }
 
-    // -------------------
-    // Death + Fade
-    // -------------------
+    // ------------------------------
+    // HEALTH / FEEDBACK SYSTEM
+    // Enemy death and fade out visuals
+    // ------------------------------
     public void DoDeath()
     {
         if (isDead) return;
@@ -293,7 +315,6 @@ public class EnemyScript : MonoBehaviour
 
         if (anim) anim.SetTrigger(DieTrigger);
 
-        // stop other behaviors
         currentState = EnemyState.Patrol;
         isPausing = false;
 
@@ -327,6 +348,7 @@ public class EnemyScript : MonoBehaviour
         else gameObject.SetActive(false);
     }
 
+    // fade visuals
     private void PrepareInstancedTransparentMaterials()
     {
         _instancedMatsPerRenderer.Clear();
@@ -345,10 +367,9 @@ public class EnemyScript : MonoBehaviour
 
                 var mi = new Material(m);
 
-                // Built-in Standard: set Rendering Mode = Fade
                 if (mi.HasProperty("_Mode"))
                 {
-                    mi.SetFloat("_Mode", 2f); // 0 Opaque, 1 Cutout, 2 Fade, 3 Transparent
+                    mi.SetFloat("_Mode", 2f);
                     mi.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
                     mi.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
                     mi.SetInt("_ZWrite", 0);
@@ -358,8 +379,7 @@ public class EnemyScript : MonoBehaviour
                     mi.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
                 }
 
-                // URP Lit: Surface = Transparent
-                if (mi.HasProperty("_Surface")) // 0 Opaque, 1 Transparent
+                if (mi.HasProperty("_Surface"))
                 {
                     mi.SetFloat("_Surface", 1f);
                     mi.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
@@ -369,7 +389,7 @@ public class EnemyScript : MonoBehaviour
                 instanced[i] = mi;
             }
 
-            r.materials = instanced; // assign instanced array so we don't edit shared assets
+            r.materials = instanced;
             _instancedMatsPerRenderer.Add(instanced);
         }
     }
@@ -400,9 +420,6 @@ public class EnemyScript : MonoBehaviour
         }
     }
 
-    // -------------------
-    // Helpers
-    // -------------------
     private void Face(Vector3 worldTarget)
     {
         Vector3 dir = worldTarget - transform.position;
