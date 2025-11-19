@@ -4,46 +4,58 @@ using UnityEngine;
 using Random = System.Random;
 using Graphs;
 
-public class Generator3D : MonoBehaviour {
-    enum CellType {
+public class Generator3D : MonoBehaviour
+{
+    enum CellType
+    {
         None,
         Room,
         Hallway,
         Stairs
     }
 
-    class Room {
+    class Room
+    {
         public BoundsInt bounds;
 
-        public Room(Vector3Int location, Vector3Int size) {
+        public Room(Vector3Int location, Vector3Int size)
+        {
             bounds = new BoundsInt(location, size);
         }
 
-        public static bool Intersect(Room a, Room b) {
+        public static bool Intersect(Room a, Room b)
+        {
             return !((a.bounds.position.x >= (b.bounds.position.x + b.bounds.size.x)) || ((a.bounds.position.x + a.bounds.size.x) <= b.bounds.position.x)
-                || (a.bounds.position.y >= (b.bounds.position.y + b.bounds.size.y)) || ((a.bounds.position.y + a.bounds.size.y) <= b.bounds.position.y)
-                || (a.bounds.position.z >= (b.bounds.position.z + b.bounds.size.z)) || ((a.bounds.position.z + a.bounds.size.z) <= b.bounds.position.z));
+                  || (a.bounds.position.y >= (b.bounds.position.y + b.bounds.size.y)) || ((a.bounds.position.y + a.bounds.size.y) <= b.bounds.position.y)
+                  || (a.bounds.position.z >= (b.bounds.position.z + b.bounds.size.z)) || ((a.bounds.position.z + a.bounds.size.z) <= b.bounds.position.z));
         }
     }
 
-    [SerializeField]
-    GameObject StartingRoom;
-    [SerializeField]
-    Vector3Int size;
-    [SerializeField]
-    int roomCount;
-    [SerializeField]
-    Vector3Int roomMaxSize;
-    [SerializeField]
-    GameObject cubePrefab;
-    [SerializeField]
-    Material redMaterial;
-    [SerializeField]
-    Material blueMaterial;
-    [SerializeField]
-    Material greenMaterial;
+    [Header("Map Settings")]
+    [SerializeField] Vector3Int size;
+    [SerializeField] int roomCount;
+    [SerializeField] Vector3Int roomMaxSize;
+
+    [Header("Debug Cube Settings")]
+    [SerializeField] bool useDebugCubes = false;
+    [SerializeField] GameObject cubePrefab;
+    [SerializeField] Material redMaterial;
+    [SerializeField] Material blueMaterial;
+
+    [Header("Dungeon Prefabs")]
+    [SerializeField] GameObject roomTilePrefab;     
+    [SerializeField] GameObject hallwayTilePrefab;  
+    [SerializeField] bool tilesPivotAtCenter = true;
+    [SerializeField] GameObject wallPrefab;
+    [SerializeField] GameObject doorFramePrefab;
+
+
+
+    [Header("Optional")]
+    [SerializeField] GameObject StartingRoom;
 
     Random random;
+
     Grid3D<CellType> grid;
     List<Room> rooms;
     Delaunay3D delaunay;
@@ -51,8 +63,8 @@ public class Generator3D : MonoBehaviour {
     List<Vertex> _roomVertices;
     public List<Vector3> roomCenters = new List<Vector3>();
 
-
-    void Start() {
+    void Start()
+    {
         random = new Random(0);
         grid = new Grid3D<CellType>(size, Vector3Int.zero);
         rooms = new List<Room>();
@@ -63,12 +75,13 @@ public class Generator3D : MonoBehaviour {
         PathfindHallways();
         RecordRoomCenters();
 
-       
         FindObjectOfType<SpawnManager>()?.Spawn();
     }
 
-    void PlaceRooms() {
-        for (int i = 0; i < roomCount; i++) {
+    void PlaceRooms()
+    {
+        for (int i = 0; i < roomCount; i++)
+        {
             Vector3Int location = new Vector3Int(
                 random.Next(0, size.x),
                 0,
@@ -85,24 +98,32 @@ public class Generator3D : MonoBehaviour {
             Room newRoom = new Room(location, roomSize);
             Room buffer = new Room(location + new Vector3Int(-1, 0, -1), roomSize + new Vector3Int(2, 0, 2));
 
-            foreach (var room in rooms) {
-                if (Room.Intersect(room, buffer)) {
+            foreach (var room in rooms)
+            {
+                if (Room.Intersect(room, buffer))
+                {
                     add = false;
                     break;
                 }
             }
 
             if (newRoom.bounds.xMin < 0 || newRoom.bounds.xMax >= size.x
-                || newRoom.bounds.yMin < 0 || newRoom.bounds.yMax >= size.y
-                || newRoom.bounds.zMin < 0 || newRoom.bounds.zMax >= size.z) {
+             || newRoom.bounds.yMin < 0 || newRoom.bounds.yMax >= size.y
+             || newRoom.bounds.zMin < 0 || newRoom.bounds.zMax >= size.z)
+            {
                 add = false;
             }
 
-            if (add) {
+            if (add)
+            {
                 rooms.Add(newRoom);
+
+                // visually place the room
                 PlaceRoom(newRoom.bounds.position, newRoom.bounds.size);
 
-                foreach (var pos in newRoom.bounds.allPositionsWithin) {
+                // mark grid cells as room
+                foreach (var pos in newRoom.bounds.allPositionsWithin)
+                {
                     grid[pos] = CellType.Room;
                 }
             }
@@ -120,7 +141,6 @@ public class Generator3D : MonoBehaviour {
         delaunay = Delaunay3D.Triangulate(_roomVertices);
     }
 
-    // 3) in CreateHallways(), add a 2D fallback when Delaunay3D returns 0 edges
     void CreateHallways()
     {
         List<Prim.Edge> edges = new List<Prim.Edge>();
@@ -129,17 +149,16 @@ public class Generator3D : MonoBehaviour {
             edges.Add(new Prim.Edge(e.U, e.V));
         }
 
+        // Fallback if no 3D edges were created (rare)
         if (edges.Count == 0)
         {
-            
-            const int k = 3; // try 2–4; tweak to taste
+            const int k = 3;
 
             for (int i = 0; i < _roomVertices.Count; i++)
             {
                 var vi = _roomVertices[i];
                 var pi = vi.Position;
 
-                // collect neighbors by XZ distance
                 var nn = new List<(float dist2, int j)>();
                 for (int j = 0; j < _roomVertices.Count; j++)
                 {
@@ -150,7 +169,6 @@ public class Generator3D : MonoBehaviour {
                 }
                 nn.Sort((a, b) => a.dist2.CompareTo(b.dist2));
 
-                // connect to k nearest (undirected; Prim will dedupe anyway)
                 int limit = Mathf.Min(k, nn.Count);
                 for (int m = 0; m < limit; m++)
                 {
@@ -180,14 +198,14 @@ public class Generator3D : MonoBehaviour {
         }
     }
 
-    void PathfindHallways() {
-
+    void PathfindHallways()
+    {
         DungeonPathfinder3D aStar = new DungeonPathfinder3D(size);
 
-        foreach (var edge in selectedEdges) {
+        foreach (var edge in selectedEdges)
+        {
             var startRoom = (edge.U as Vertex<Room>).Item;
             var endRoom = (edge.V as Vertex<Room>).Item;
-
 
             var startPosf = startRoom.bounds.center;
             var endPosf = endRoom.bounds.center;
@@ -195,12 +213,12 @@ public class Generator3D : MonoBehaviour {
             var startPos = new Vector3Int(Mathf.RoundToInt(startPosf.x), 0, Mathf.RoundToInt(startPosf.z));
             var endPos = new Vector3Int(Mathf.RoundToInt(endPosf.x), 0, Mathf.RoundToInt(endPosf.z));
 
-
-            var path = aStar.FindPath(startPos, endPos, (DungeonPathfinder3D.Node a, DungeonPathfinder3D.Node b) => {
+            var path = aStar.FindPath(startPos, endPos, (DungeonPathfinder3D.Node a, DungeonPathfinder3D.Node b) =>
+            {
                 var pathCost = new DungeonPathfinder3D.PathCost
                 {
-                    traversable = true, // It's traversable if it's a valid neighbor (already guaranteed to be delta.y == 0)
-                    isStairs = false    // Not stairs
+                    traversable = true,
+                    isStairs = false
                 };
                 float stepCost = 1f;
 
@@ -212,12 +230,11 @@ public class Generator3D : MonoBehaviour {
 
                 if (b.Position == endPos)
                 {
-                    // No penalty to step into the goal room (makes connection reliable)
                     stepCost += 0f;
                 }
                 else if (grid[b.Position] == CellType.Room)
                 {
-                    stepCost += 1f; // small penalty for being inside a room (was +5 — that was too large)
+                    stepCost += 1f;
                 }
                 else if (grid[b.Position] == CellType.None)
                 {
@@ -225,82 +242,187 @@ public class Generator3D : MonoBehaviour {
                 }
                 else if (grid[b.Position] == CellType.Hallway)
                 {
-                    stepCost += 0.1f; // prefer corridors slightly
+                    stepCost += 0.1f;
                 }
-
 
                 pathCost.cost = stepCost + Vector3Int.Distance(b.Position, endPos);
 
                 return pathCost;
             });
 
-            if (path != null) {
-                for (int i = 0; i < path.Count; i++) {
+            if (path != null)
+            {
+                for (int i = 0; i < path.Count; i++)
+                {
                     var current = path[i];
 
-                    if (grid[current] == CellType.None) {
+                    if (grid[current] == CellType.None)
+                    {
                         grid[current] = CellType.Hallway;
                     }
 
-                    if (i > 0) {
-                        var prev = path[i - 1];                        
-
+                    if (i > 0)
+                    {
+                        var prev = path[i - 1];
                         Debug.DrawLine(prev + new Vector3(0.5f, 0.5f, 0.5f), current + new Vector3(0.5f, 0.5f, 0.5f), Color.blue, 100, false);
                     }
                 }
 
-                foreach (var pos in path) {
-                    if (grid[pos] == CellType.Hallway) {
+                foreach (var pos in path)
+                {
+                    if (grid[pos] == CellType.Hallway)
+                    {
                         PlaceHallway(pos);
                     }
-
                 }
             }
             else
             {
-                // Add a debug message to see if any path is failing
                 Debug.LogError($"Pathfinding failed between room at {startRoom.bounds.center} and {endRoom.bounds.center}");
             }
         }
-
-
     }
 
-    void PlaceCube(Vector3Int location, Vector3Int size, Material material) {
-        GameObject go = Instantiate(cubePrefab, location, Quaternion.identity);
+    // ---------- VISUAL PLACEMENT HELPERS ----------
+
+    void PlaceCube(Vector3Int location, Vector3Int size, Material material)
+    {
+        GameObject go = Instantiate(cubePrefab, location, Quaternion.identity, transform);
         go.transform.localScale = size;
 
         var mr = go.GetComponent<MeshRenderer>();
         if (mr) mr.material = material;
 
-        // Ensure there is a collider
         var bc = go.GetComponent<BoxCollider>();
         if (bc == null) bc = go.AddComponent<BoxCollider>();
-
-        // If your cube prefab’s pivot is at the corner (which your screenshots suggest),
-        // use a unit-sized collider and center it at (0.5, 0.5, 0.5) so it lines up with the scaled mesh.
         bc.size = Vector3.one;
         bc.center = new Vector3(0.5f, 0.5f, 0.5f);
 
-        // Optional: mark static for perf
         go.isStatic = true;
     }
+   
 
-    void PlaceRoom(Vector3Int location, Vector3Int size) {
-        PlaceCube(location, size, redMaterial);
-        // record center for spawning (single-floor: y=0)
+    void PlaceRoom(Vector3Int location, Vector3Int size)
+    {
+        // Record center for spawns
         Vector3 center = (Vector3)location + (Vector3)size / 2f;
         center.y = 0f;
         roomCenters.Add(center);
+
+        if (useDebugCubes || roomTilePrefab == null)
+        {
+            // Old behaviour: one big red cube
+            PlaceCube(location, size, redMaterial);
+            return;
+        }
+
+        // New behaviour: fill the room area with 1x1 tiles
+        var bounds = new BoundsInt(location, size);
+        Vector3 offset = tilesPivotAtCenter ? new Vector3(0.5f, 0f, 0.5f) : Vector3.zero;
+
+        foreach (var pos in bounds.allPositionsWithin)
+        {
+            Vector3 worldPos = (Vector3)pos + offset;
+            Instantiate(roomTilePrefab, worldPos, Quaternion.identity, transform);
+        }
+
+        BuildWallsForRoom(bounds);
+    }
+    void BuildWallsForRoom(BoundsInt roomBounds)
+    {
+        if (wallPrefab == null) return;
+
+        Vector3 offset = tilesPivotAtCenter ? new Vector3(0.5f, 0f, 0.5f) : Vector3.zero;
+
+        foreach (var pos in roomBounds.allPositionsWithin)
+        {
+            // For each tile, check the 4 neighbor directions
+            Vector3Int[] directions = {
+            new Vector3Int(1,0,0),
+            new Vector3Int(-1,0,0),
+            new Vector3Int(0,0,1),
+            new Vector3Int(0,0,-1)
+        };
+
+            foreach (var dir in directions)
+            {
+                Vector3Int neighbor = pos + dir;
+                bool neighborIsEmpty =!grid.InBounds(neighbor) || grid[neighbor] == CellType.None;
+
+
+                
+                if (!roomBounds.Contains(neighbor))
+                {
+                    Vector3 wallPos = (Vector3)pos + offset + new Vector3(dir.x * 0.5f, 1.5f, dir.z * 0.5f);
+
+                    Quaternion rot = Quaternion.identity;
+                    if (dir.x != 0) rot = Quaternion.Euler(0, 90, 0);
+
+                    Instantiate(wallPrefab, wallPos, rot, transform);
+                }
+            }
+        }
+    }
+    void BuildWallsForHallways()
+    {
+        if (wallPrefab == null) return;
+
+        Vector3 offset = tilesPivotAtCenter ? new Vector3(0.5f, 0f, 0.5f) : Vector3.zero;
+        HashSet<Vector3> placedWalls = new HashSet<Vector3>();
+
+        for (int x = 0; x < size.x; x++)
+            for (int z = 0; z < size.z; z++)
+            {
+                Vector3Int pos = new Vector3Int(x, 0, z);
+                if (grid[pos] != CellType.Hallway) continue;
+
+                Vector3Int[] directions = {
+            new Vector3Int(1,0,0),
+            new Vector3Int(-1,0,0),
+            new Vector3Int(0,0,1),
+            new Vector3Int(0,0,-1)
+        };
+
+                foreach (var dir in directions)
+                {
+                    var neighbor = pos + dir;
+
+                    // Only place a wall if neighbor is out of bounds or empty
+                    bool neighborIsEmpty =
+                        !grid.InBounds(neighbor) || grid[neighbor] == CellType.None;
+
+                    if (!neighborIsEmpty) continue;
+
+                    Vector3 wallPos = (Vector3)pos + offset +
+                                      new Vector3(dir.x * 0.5f, 1.5f, dir.z * 0.5f);
+
+                    // avoid double walls on shared edges
+                    if (placedWalls.Contains(wallPos)) continue;
+                    placedWalls.Add(wallPos);
+
+                    Quaternion rot = Quaternion.identity;
+                    if (dir.x != 0) rot = Quaternion.Euler(0, 90, 0);
+
+                    Instantiate(wallPrefab, wallPos, rot, transform);
+                }
+            }
     }
 
-    void PlaceHallway(Vector3Int location) {
-        PlaceCube(location, new Vector3Int(1, 1, 1), blueMaterial);
+    void PlaceHallway(Vector3Int location)
+    {
+        if (useDebugCubes || hallwayTilePrefab == null)
+        {
+            PlaceCube(location, new Vector3Int(1, 1, 1), blueMaterial);
+            return;
+        }
+
+        Vector3 offset = tilesPivotAtCenter ? new Vector3(0.5f, 0f, 0.5f) : Vector3.zero;
+        Vector3 worldPos = (Vector3)location + offset;
+        Instantiate(hallwayTilePrefab, worldPos, Quaternion.identity, transform);
+        BuildWallsForHallways();
+
     }
 
-    void PlaceStairs(Vector3Int location) {
-        PlaceCube(location, new Vector3Int(1, 1, 1), greenMaterial);
-    }
     public void RecordRoomCenters()
     {
         roomCenters.Clear();
@@ -313,5 +435,6 @@ public class Generator3D : MonoBehaviour {
         }
 
         Debug.Log($"Recorded {roomCenters.Count} room centers.");
+        
     }
 }
