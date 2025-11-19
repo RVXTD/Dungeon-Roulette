@@ -73,6 +73,7 @@ public class Generator3D : MonoBehaviour
         Triangulate();
         CreateHallways();
         PathfindHallways();
+        PlaceDoorsAtRoomHallwayEdges();
         RecordRoomCenters();
 
         FindObjectOfType<SpawnManager>()?.Spawn();
@@ -437,4 +438,52 @@ public class Generator3D : MonoBehaviour
         Debug.Log($"Recorded {roomCenters.Count} room centers.");
         
     }
+    void PlaceDoorsAtRoomHallwayEdges()
+    {
+        if (doorFramePrefab == null) return;
+
+        Vector3 tileOffset = tilesPivotAtCenter ? new Vector3(0.5f, 0f, 0.5f) : Vector3.zero;
+
+        // We only place doors from the ROOM side so we don't double-spawn.
+        for (int x = 0; x < size.x; x++)
+        {
+            for (int z = 0; z < size.z; z++)
+            {
+                Vector3Int pos = new Vector3Int(x, 0, z);
+                if (grid[pos] != CellType.Room) continue;
+
+                // Check 4 directions around this room tile
+                Vector3Int[] dirs =
+                {
+                new Vector3Int(1,0,0),
+                new Vector3Int(-1,0,0),
+                new Vector3Int(0,0,1),
+                new Vector3Int(0,0,-1)
+            };
+
+                foreach (var dir in dirs)
+                {
+                    Vector3Int neighbor = pos + dir;
+                    if (!grid.InBounds(neighbor)) continue;
+
+                    // If the neighbor is a hallway, this edge is a doorway
+                    if (grid[neighbor] == CellType.Hallway)
+                    {
+                        Vector3 basePos = (Vector3)pos + tileOffset;
+
+                        // Put the door halfway between room and corridor, raise it a bit
+                        Vector3 doorPos = basePos +
+                                          new Vector3(dir.x * 0.5f, 1.0f, dir.z * 0.5f);
+
+                        Quaternion rot = Quaternion.identity;
+                        if (dir.x != 0)
+                            rot = Quaternion.Euler(0f, 90f, 0f);
+
+                        Instantiate(doorFramePrefab, doorPos, rot, transform);
+                    }
+                }
+            }
+        }
+    }
+
 }
