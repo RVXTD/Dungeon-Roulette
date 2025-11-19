@@ -17,6 +17,15 @@ public class PlayerHealth : MonoBehaviour, IDamageable
     public MonoBehaviour[] scriptsToDisable;
     public GameObject deathUI;
 
+    [Header("Ability Hooks")]
+    public bool isInvincible = false;
+
+    [Tooltip("When true, player reflects damage to nearby enemies on hit.")]
+    public bool thornsActive = false;
+    public float thornsRadius = 4f;
+    public float thornsDamage = 10f;
+    public LayerMask enemyLayer;   // set this to Enemy layer in Inspector
+
     private bool isDead = false;
 
     public static bool PlayerIsDead { get; private set; } = false;
@@ -41,11 +50,17 @@ public class PlayerHealth : MonoBehaviour, IDamageable
     public void TakeDamage(float amount)
     {
         if (isDead) return;
+        if (isInvincible) return;
 
         currentHealth = Mathf.Clamp(currentHealth - amount, 0, maxHealth);
-        Debug.Log($"Player took {amount} damage. HP: {currentHealth}");
 
         UpdateHealthUI();
+
+        // Thorns reflect damage to nearby enemies
+        if (thornsActive && amount > 0f)
+        {
+            DoThorns();
+        }
 
         if (currentHealth <= 0)
             Die();
@@ -82,7 +97,6 @@ public class PlayerHealth : MonoBehaviour, IDamageable
             if (script != null)
             {
                 script.enabled = false;
-                Debug.Log($"Disabled: {script.GetType().Name}");
             }
         }
 
@@ -106,4 +120,21 @@ public class PlayerHealth : MonoBehaviour, IDamageable
         currentHealth = maxHealth;
         UpdateHealthUI();
     }
+
+    // --- Thorns reflect damage to nearby enemies ---
+    private void DoThorns()
+    {
+        // No layer mask → check everything around player
+        Collider[] hits = Physics.OverlapSphere(transform.position, thornsRadius);
+
+        foreach (var hit in hits)
+        {
+            EnemyHealth eh = hit.GetComponentInParent<EnemyHealth>();
+            if (eh != null && eh.CurrentHealth > 0f)
+            {
+                eh.TakeDamage(thornsDamage);
+            }
+        }
+    }
+
 }

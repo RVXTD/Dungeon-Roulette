@@ -51,6 +51,8 @@ public class EnemyScript : MonoBehaviour
     private float pauseTimer = 0f;
     private Vector3 patrolPoint;
     private float lastAttackTime;
+    private bool isFrozen = false;
+    private float freezeTimer = 0f;
 
     // animator hashes
     private static readonly int MoveSpeedHash = Animator.StringToHash("MoveSpeed");
@@ -83,6 +85,26 @@ public class EnemyScript : MonoBehaviour
 
     void Update()
     {
+        if (isFrozen)
+        {
+            if (agent)
+            {
+                agent.isStopped = true;
+                agent.velocity = Vector3.zero;
+                agent.ResetPath();
+            }
+
+            SetMoveSpeed(0f);
+            if (anim) anim.speed = 0f;
+
+            freezeTimer -= Time.deltaTime;
+            if (freezeTimer <= 0f)
+            {
+                Unfreeze();
+            }
+
+            return;
+        }
         if (isDead || !player || PlayerHealth.PlayerIsDead)
         {
             if (agent)
@@ -433,6 +455,45 @@ public class EnemyScript : MonoBehaviour
     private void SetMoveSpeed(float v)
     {
         if (anim) anim.SetFloat(MoveSpeedHash, v);
+    }
+    // ------------------------------
+    // FREEZE CONTROL
+    // ------------------------------
+    public void FreezeForDuration(float duration)
+    {
+        if (isDead) return;
+
+        isFrozen = true;
+        freezeTimer = duration;
+
+        if (agent)
+        {
+            agent.isStopped = true;
+            agent.velocity = Vector3.zero;
+            agent.ResetPath();
+        }
+
+        if (anim)
+        {
+            anim.speed = 0f;
+            anim.ResetTrigger(AttackTrigger);
+            SetMoveSpeed(0f);
+        }
+    }
+
+    private void Unfreeze()
+    {
+        isFrozen = false;
+
+        if (agent)
+        {
+            agent.isStopped = false;
+        }
+
+        if (anim)
+        {
+            anim.speed = 1f;
+        }
     }
 
     void OnDrawGizmosSelected()
