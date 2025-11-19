@@ -1,4 +1,5 @@
 ﻿using UnityEngine;
+using System.Collections;
 
 [RequireComponent(typeof(CharacterController))]
 public class SimplePlayerController : MonoBehaviour
@@ -15,7 +16,6 @@ public class SimplePlayerController : MonoBehaviour
 
     // ---------------------------------------------
     // PLAYER ABILITY SCRIPT (DASH)
-    // Implements dash movement activated by F key.
     // ---------------------------------------------
     [Header("Dash Ability")]
     public KeyCode dashKey = KeyCode.F;
@@ -24,7 +24,28 @@ public class SimplePlayerController : MonoBehaviour
     public float dashCooldown = 1.0f;
     public bool allowAirDash = true;
 
+    // ---------------------------------------------
+    // NEW ABILITIES
+    // ---------------------------------------------
+    [Header("Freeze Ability")]
+    public KeyCode freezeKey = KeyCode.Z;   // Freeze = Z
+    public float freezeRadius = 10f;
+    public float freezeDuration = 3f;
+    public LayerMask enemyLayerMask;
+
+    [Header("Thorns Ability")]
+    public KeyCode thornsKey = KeyCode.X;   // Thorns = X
+    public float thornsDuration = 8f;
+    public float thornsCooldown = 15f;
+
+    [Header("Invincibility Ability")]
+    public KeyCode invincibleKey = KeyCode.C;  // Invincibility = C
+    public float invincibleDuration = 5f;
+    public float invincibleCooldown = 20f;
+
     private CharacterController cc;
+    private PlayerHealth playerHealth;
+
     private float vertVelocity;
     private float yaw;
     private bool isDashing = false;
@@ -32,17 +53,23 @@ public class SimplePlayerController : MonoBehaviour
     private Vector3 lastPlanarMove = Vector3.zero;
     private float nextDashTime = 0f;
 
+    private bool thornsOnCooldown = false;
+    private bool invincibleOnCooldown = false;
+
     void Awake()
     {
         cc = GetComponent<CharacterController>();
+        playerHealth = GetComponent<PlayerHealth>();
         Cursor.lockState = CursorLockMode.Locked;
     }
 
     void Update()
     {
+        // --- Mouse Look ---
         yaw += Input.GetAxis("Mouse X") * mouseSensitivity;
         transform.rotation = Quaternion.Euler(0f, yaw, 0f);
 
+        // --- Movement Input ---
         float h = Input.GetAxisRaw("Horizontal");
         float v = Input.GetAxisRaw("Vertical");
 
@@ -63,12 +90,10 @@ public class SimplePlayerController : MonoBehaviour
             ? sprintSpeed
             : moveSpeed;
 
-        // -------------------------------------
-        // PLAYER ABILITY SCRIPT (DASH)
-        // Dash input and cooldown logic.
-        // -------------------------------------
+        // --- Dash ---
         TryStartDash(moveDir);
 
+        // --- Gravity / Jump ---
         if (cc.isGrounded)
         {
             hasAirDashed = false;
@@ -84,17 +109,20 @@ public class SimplePlayerController : MonoBehaviour
                 vertVelocity += gravity * Time.deltaTime;
         }
 
+        // --- Normal movement when not dashing ---
         if (!isDashing)
         {
             Vector3 velocity = moveDir * currentSpeed;
             velocity.y = vertVelocity;
             cc.Move(velocity * Time.deltaTime);
         }
+
+        // --- Ability inputs (freeze, thorns, invincibility) ---
+        HandleAbilities();
     }
 
     // -------------------------------------
-    // PLAYER ABILITY SCRIPT (DASH)
-    // Checks dash input, direction, and air dash limits.
+    // DASH
     // -------------------------------------
     private void TryStartDash(Vector3 moveDir)
     {
@@ -114,11 +142,7 @@ public class SimplePlayerController : MonoBehaviour
         StartCoroutine(DashRoutine(dashDir));
     }
 
-    // -------------------------------------
-    // PLAYER ABILITY SCRIPT (DASH)
-    // Moves player quickly in a set direction.
-    // -------------------------------------
-    private System.Collections.IEnumerator DashRoutine(Vector3 dashDir)
+    private IEnumerator DashRoutine(Vector3 dashDir)
     {
         isDashing = true;
         float savedVert = vertVelocity;
@@ -141,5 +165,78 @@ public class SimplePlayerController : MonoBehaviour
             vertVelocity = savedVert;
         else
             vertVelocity = -1f;
+    }
+
+    // -------------------------------------
+    // NEW ABILITIES
+    // -------------------------------------
+    private void HandleAbilities()
+    {
+        if (Input.GetKeyDown(freezeKey))
+        {
+            ActivateFreeze();
+        }
+
+        if (Input.GetKeyDown(thornsKey))
+        {
+            if (!thornsOnCooldown && playerHealth != null)
+                StartCoroutine(ThornsRoutine());
+        }
+
+        if (Input.GetKeyDown(invincibleKey))
+        {
+            if (!invincibleOnCooldown && playerHealth != null)
+                StartCoroutine(InvincibilityRoutine());
+        }
+    }
+
+    // Freeze all enemies in a radius
+    private void ActivateFreeze()
+    {
+        // Grab everything in range; we’ll filter by EnemyScript
+        Collider[] hits = Physics.OverlapSphere(transform.position, freezeRadius);
+
+        foreach (var hit in hits)
+        {
+            EnemyScript enemy = hit.GetComponentInParent<EnemyScript>();
+            if (enemy != null)
+            {
+                enemy.FreezeForDuration(freezeDuration);
+            }
+        }
+    }
+
+    // Thorns buff: reflect damage while active
+    private IEnumerator ThornsRoutine()
+    {
+        thornsOnCooldown = true;
+        playerHealth.thornsActive = true;
+
+        yield return new WaitForSeconds(thornsDuration);
+
+        playerHealth.thornsActive = false;
+
+        yield return new WaitForSeconds(thornsCooldown);
+        thornsOnCooldown = false;
+    }
+
+    // Invincibility buff: ignore all damage while active
+    private IEnumerator InvincibilityRoutine()
+    {
+        invincibleOnCooldown = true;
+        playerHealth.isInvincible = true;
+
+        yield return new WaitForSeconds(invincibleDuration);
+
+        playerHealth.isInvincible = false;
+
+        yield return new WaitForSeconds(invincibleCooldown);
+        invincibleOnCooldown = false;
+    }
+    private void OnDrawGizmosSelected()
+    {
+        // Only run in editor when object is selected
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawWireSphere(transform.position, freezeRadius);
     }
 }

@@ -6798,11 +6798,39 @@ PrefabInstance:
       value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 868554662775915934, guid: deecb68caa334bd4782c41805e0e1879, type: 3}
+      propertyPath: freezeRadius
+      value: 100
+      objectReference: {fileID: 0}
+    - target: {fileID: 868554662775915934, guid: deecb68caa334bd4782c41805e0e1879, type: 3}
+      propertyPath: freezeDuration
+      value: 20
+      objectReference: {fileID: 0}
+    - target: {fileID: 868554662775915934, guid: deecb68caa334bd4782c41805e0e1879, type: 3}
+      propertyPath: thornsCooldown
+      value: 10
+      objectReference: {fileID: 0}
+    - target: {fileID: 868554662775915934, guid: deecb68caa334bd4782c41805e0e1879, type: 3}
+      propertyPath: thornsDuration
+      value: 30
+      objectReference: {fileID: 0}
+    - target: {fileID: 868554662775915934, guid: deecb68caa334bd4782c41805e0e1879, type: 3}
       propertyPath: cameraTransform
       value: 
       objectReference: {fileID: 963194228}
     - target: {fileID: 868554662775915934, guid: deecb68caa334bd4782c41805e0e1879, type: 3}
       propertyPath: mouseSensitivity
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 868554662775915934, guid: deecb68caa334bd4782c41805e0e1879, type: 3}
+      propertyPath: invincibleCooldown
+      value: 10
+      objectReference: {fileID: 0}
+    - target: {fileID: 868554662775915934, guid: deecb68caa334bd4782c41805e0e1879, type: 3}
+      propertyPath: invincibleDuration
+      value: 30
+      objectReference: {fileID: 0}
+    - target: {fileID: 868554662775915934, guid: deecb68caa334bd4782c41805e0e1879, type: 3}
+      propertyPath: enemyLayerMask.m_Bits
       value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 2317849655326732186, guid: deecb68caa334bd4782c41805e0e1879, type: 3}
