@@ -38,8 +38,6 @@ public class EnemyHealth : MonoBehaviour, IDamageable
     public void TakeDamage(float amount)
     {
         currentHealth = Mathf.Clamp(currentHealth - amount, 0, maxHealth);
-        Debug.Log($"{name} took {amount} damage. HP: {currentHealth}");
-
         StartCoroutine(FlashRed());
 
         if (currentHealth <= 0)
@@ -66,7 +64,6 @@ public class EnemyHealth : MonoBehaviour, IDamageable
     public void Heal(float amount)
     {
         currentHealth = Mathf.Clamp(currentHealth + amount, 0, maxHealth);
-        Debug.Log($"{name} healed {amount}. HP: {currentHealth}");
     }
 
     private void Die()
