@@ -1,11 +1,15 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using UnityEngine.AI;
+using Unity.AI.Navigation;
 using UnityEngine;
 using Random = System.Random;
 using Graphs;
 
 public class Generator3D : MonoBehaviour
 {
+    [Header("NavMesh")]
+    [SerializeField] private NavMeshSurface navSurface;
     enum CellType
     {
         None,
@@ -85,9 +89,19 @@ public class Generator3D : MonoBehaviour
 
         BuildWallsForHallways();
 
-
         PlaceDoorsAtRoomHallwayEdges();
         BuildCeilings();
+
+        //--- NEW: build NavMesh over the generated level ---
+        if (navSurface == null)
+            navSurface = GetComponent<NavMeshSurface>();
+
+        if (navSurface != null)
+        {
+            navSurface.BuildNavMesh();
+        }
+        // ---------------------------------------------------
+
         RecordRoomCenters();
 
         FindObjectOfType<SpawnManager>()?.Spawn();
@@ -558,6 +572,4 @@ public class Generator3D : MonoBehaviour
             }
         }
     }
-
-
 }
