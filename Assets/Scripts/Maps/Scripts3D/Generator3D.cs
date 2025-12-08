@@ -379,18 +379,26 @@ public class Generator3D : MonoBehaviour
         {
             Vector3 worldPos = (Vector3)pos + offset;
 
-            GameObject tilePrefabToUse = roomTilePrefab;
+            GameObject floor = Instantiate(roomTilePrefab, worldPos, Quaternion.identity, transform);
 
-            if (trapTilePrefab != null && random.NextDouble() < trapChancePerTile)
+            bool placeTrap = trapTilePrefab != null && random.NextDouble() < trapChancePerTile;
+
+            if (placeTrap)
             {
-                tilePrefabToUse = trapTilePrefab;
-            }
+                Instantiate(trapTilePrefab, worldPos, Quaternion.identity, transform);
 
-            Instantiate(tilePrefabToUse, worldPos, Quaternion.identity, transform);
+                var renderers = floor.GetComponentsInChildren<MeshRenderer>();
+                foreach (var mr in renderers)
+                {
+                    mr.enabled = false;
+                }
+            }
         }
 
         BuildWallsForRoom(bounds);
     }
+
+
 
     void BuildWallsForRoom(BoundsInt roomBounds)
     {
