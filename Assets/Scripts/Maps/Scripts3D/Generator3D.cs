@@ -1,11 +1,16 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using UnityEngine.AI;
+using Unity.AI.Navigation;
 using UnityEngine;
 using Random = System.Random;
 using Graphs;
 
 public class Generator3D : MonoBehaviour
 {
+    [Header("NavMesh")]
+    [SerializeField] private NavMeshSurface navSurface;
+
     enum CellType
     {
         None,
@@ -49,17 +54,19 @@ public class Generator3D : MonoBehaviour
     [SerializeField] GameObject wallPrefab;
     [SerializeField] GameObject doorFramePrefab;
 
+    [Header("Trap Settings")]
+    [SerializeField] GameObject trapTilePrefab;
+    [Range(0f, 1f)]
+    [SerializeField] float trapChancePerTile = 0.15f;
 
     [Header("Door Settings")]
-    [SerializeField] float doorCenterHeight = 1.5f;   // tweak in Inspector
-
+    [SerializeField] float doorCenterHeight = 1.5f;
 
     [Header("Ceiling Settings")]
     [SerializeField] GameObject ceilingTilePrefab;
-    [SerializeField] float ceilingHeight = 3f;   // same height as your walls
+    [SerializeField] float ceilingHeight = 3f;
     [SerializeField] bool addCeilingsToRooms = true;
     [SerializeField] bool addCeilingsToHallways = true;
-
 
     Random random;
 
@@ -78,19 +85,37 @@ public class Generator3D : MonoBehaviour
         grid = new Grid3D<CellType>(size, Vector3Int.zero);
         rooms = new List<Room>();
 
+        // --- generate geometry ---
         PlaceRooms();
         Triangulate();
         CreateHallways();
         PathfindHallways();
 
         BuildWallsForHallways();
-
-
         PlaceDoorsAtRoomHallwayEdges();
         BuildCeilings();
-        RecordRoomCenters();
 
+        // --- navmesh setup ---
+        if (navSurface == null)
+            navSurface = GetComponent<NavMeshSurface>();
+
+        if (navSurface != null)
+            StartCoroutine(RebuildNavmeshNextFrame());
+
+        // --- room centers + enemy spawns ---
+        RecordRoomCenters();
         FindObjectOfType<SpawnManager>()?.Spawn();
+
+        StartCoroutine(RebuildNavmeshNextFrame());
+
+    }
+
+    // Wait one frame so all instantiated tiles/walls/doors exist,
+    // then build the NavMesh over the final dungeon.
+    private IEnumerator RebuildNavmeshNextFrame()
+    {
+        yield return null;
+        navSurface.BuildNavMesh();
     }
 
     void PlaceRooms()
@@ -164,7 +189,6 @@ public class Generator3D : MonoBehaviour
             edges.Add(new Prim.Edge(e.U, e.V));
         }
 
-        // Fallback if no 3D edges were created (rare)
         if (edges.Count == 0)
         {
             const int k = 3;
@@ -210,6 +234,18 @@ public class Generator3D : MonoBehaviour
             {
                 selectedEdges.Add(edge);
             }
+        }
+    }
+
+    // Marks a grid cell as hallway and instantiates the hallway floor there
+    void TryMakeHallwayCell(Vector3Int pos)
+    {
+        if (!grid.InBounds(pos)) return;
+
+        if (grid[pos] == CellType.None)
+        {
+            grid[pos] = CellType.Hallway;
+            PlaceHallway(pos);
         }
     }
 
@@ -261,7 +297,6 @@ public class Generator3D : MonoBehaviour
                 }
 
                 pathCost.cost = stepCost + Vector3Int.Distance(b.Position, endPos);
-
                 return pathCost;
             });
 
@@ -271,23 +306,31 @@ public class Generator3D : MonoBehaviour
                 {
                     var current = path[i];
 
-                    if (grid[current] == CellType.None)
-                    {
-                        grid[current] = CellType.Hallway;
-                    }
+                    // always make the center hallway cell
+                    TryMakeHallwayCell(current);
 
+                    // if we know the direction we came from, widen perpendicular to that
                     if (i > 0)
                     {
                         var prev = path[i - 1];
-                        Debug.DrawLine(prev + new Vector3(0.5f, 0.5f, 0.5f), current + new Vector3(0.5f, 0.5f, 0.5f), Color.blue, 100, false);
-                    }
-                }
+                        Vector3Int dir = current - prev;  // e.g. (1,0,0) or (0,0,-1)
 
-                foreach (var pos in path)
-                {
-                    if (grid[pos] == CellType.Hallway)
-                    {
-                        PlaceHallway(pos);
+                        // hallway going along X → widen along Z
+                        if (Mathf.Abs(dir.x) > 0)
+                        {
+                            TryMakeHallwayCell(current + new Vector3Int(0, 0, 1));
+                            TryMakeHallwayCell(current + new Vector3Int(0, 0, -1));
+                        }
+                        // hallway going along Z → widen along X
+                        else if (Mathf.Abs(dir.z) > 0)
+                        {
+                            TryMakeHallwayCell(current + new Vector3Int(1, 0, 0));
+                            TryMakeHallwayCell(current + new Vector3Int(-1, 0, 0));
+                        }
+
+                        Debug.DrawLine(prev + new Vector3(0.5f, 0.5f, 0.5f),
+                                       current + new Vector3(0.5f, 0.5f, 0.5f),
+                                       Color.blue, 100, false);
                     }
                 }
             }
@@ -297,6 +340,7 @@ public class Generator3D : MonoBehaviour
             }
         }
     }
+
 
     // ---------- VISUAL PLACEMENT HELPERS ----------
 
@@ -316,33 +360,46 @@ public class Generator3D : MonoBehaviour
         go.isStatic = true;
     }
 
-
     void PlaceRoom(Vector3Int location, Vector3Int size)
     {
-        // Record center for spawns
         Vector3 center = (Vector3)location + (Vector3)size / 2f;
         center.y = 0f;
         roomCenters.Add(center);
 
         if (useDebugCubes || roomTilePrefab == null)
         {
-            // Old behaviour: one big red cube
             PlaceCube(location, size, redMaterial);
             return;
         }
 
-        // New behaviour: fill the room area with 1x1 tiles
         var bounds = new BoundsInt(location, size);
         Vector3 offset = tilesPivotAtCenter ? new Vector3(0.5f, 0f, 0.5f) : Vector3.zero;
 
         foreach (var pos in bounds.allPositionsWithin)
         {
             Vector3 worldPos = (Vector3)pos + offset;
-            Instantiate(roomTilePrefab, worldPos, Quaternion.identity, transform);
+
+            GameObject floor = Instantiate(roomTilePrefab, worldPos, Quaternion.identity, transform);
+
+            bool placeTrap = trapTilePrefab != null && random.NextDouble() < trapChancePerTile;
+
+            if (placeTrap)
+            {
+                Instantiate(trapTilePrefab, worldPos, Quaternion.identity, transform);
+
+                var renderers = floor.GetComponentsInChildren<MeshRenderer>();
+                foreach (var mr in renderers)
+                {
+                    mr.enabled = false;
+                }
+            }
         }
 
         BuildWallsForRoom(bounds);
     }
+
+
+
     void BuildWallsForRoom(BoundsInt roomBounds)
     {
         if (wallPrefab == null) return;
@@ -351,20 +408,17 @@ public class Generator3D : MonoBehaviour
 
         foreach (var pos in roomBounds.allPositionsWithin)
         {
-            // For each tile, check the 4 neighbor directions
             Vector3Int[] directions = {
-            new Vector3Int(1,0,0),
-            new Vector3Int(-1,0,0),
-            new Vector3Int(0,0,1),
-            new Vector3Int(0,0,-1)
-        };
+                new Vector3Int(1,0,0),
+                new Vector3Int(-1,0,0),
+                new Vector3Int(0,0,1),
+                new Vector3Int(0,0,-1)
+            };
 
             foreach (var dir in directions)
             {
                 Vector3Int neighbor = pos + dir;
                 bool neighborIsEmpty = !grid.InBounds(neighbor) || grid[neighbor] == CellType.None;
-
-
 
                 if (!roomBounds.Contains(neighbor))
                 {
@@ -379,6 +433,7 @@ public class Generator3D : MonoBehaviour
             }
         }
     }
+
     void BuildWallsForHallways()
     {
         if (wallPrefab == null) return;
@@ -387,23 +442,23 @@ public class Generator3D : MonoBehaviour
         HashSet<Vector3> placedWalls = new HashSet<Vector3>();
 
         for (int x = 0; x < size.x; x++)
+        {
             for (int z = 0; z < size.z; z++)
             {
                 Vector3Int pos = new Vector3Int(x, 0, z);
                 if (grid[pos] != CellType.Hallway) continue;
 
                 Vector3Int[] directions = {
-            new Vector3Int(1,0,0),
-            new Vector3Int(-1,0,0),
-            new Vector3Int(0,0,1),
-            new Vector3Int(0,0,-1)
-        };
+                    new Vector3Int(1,0,0),
+                    new Vector3Int(-1,0,0),
+                    new Vector3Int(0,0,1),
+                    new Vector3Int(0,0,-1)
+                };
 
                 foreach (var dir in directions)
                 {
                     var neighbor = pos + dir;
 
-                    // Only place a wall if neighbor is out of bounds or empty
                     bool neighborIsEmpty =
                         !grid.InBounds(neighbor) || grid[neighbor] == CellType.None;
 
@@ -412,7 +467,6 @@ public class Generator3D : MonoBehaviour
                     Vector3 wallPos = (Vector3)pos + offset +
                                       new Vector3(dir.x * 0.5f, 1.5f, dir.z * 0.5f);
 
-                    // avoid double walls on shared edges
                     if (placedWalls.Contains(wallPos)) continue;
                     placedWalls.Add(wallPos);
 
@@ -423,6 +477,7 @@ public class Generator3D : MonoBehaviour
                     spawnedWalls.Add(wall);
                 }
             }
+        }
     }
 
     void PlaceHallway(Vector3Int location)
@@ -436,8 +491,6 @@ public class Generator3D : MonoBehaviour
         Vector3 offset = tilesPivotAtCenter ? new Vector3(0.5f, 0f, 0.5f) : Vector3.zero;
         Vector3 worldPos = (Vector3)location + offset;
         Instantiate(hallwayTilePrefab, worldPos, Quaternion.identity, transform);
-
-
     }
 
     public void RecordRoomCenters()
@@ -452,15 +505,14 @@ public class Generator3D : MonoBehaviour
         }
 
         Debug.Log($"Recorded {roomCenters.Count} room centers.");
-
     }
+
     void PlaceDoorsAtRoomHallwayEdges()
     {
         if (doorFramePrefab == null) return;
 
         Vector3 tileOffset = tilesPivotAtCenter ? new Vector3(0.5f, 0f, 0.5f) : Vector3.zero;
 
-        // We only place doors from the ROOM side so we don't double-spawn.
         for (int x = 0; x < size.x; x++)
         {
             for (int z = 0; z < size.z; z++)
@@ -468,26 +520,22 @@ public class Generator3D : MonoBehaviour
                 Vector3Int pos = new Vector3Int(x, 0, z);
                 if (grid[pos] != CellType.Room) continue;
 
-                // Check 4 directions around this room tile
                 Vector3Int[] dirs =
                 {
-                new Vector3Int(1,0,0),
-                new Vector3Int(-1,0,0),
-                new Vector3Int(0,0,1),
-                new Vector3Int(0,0,-1)
-            };
+                    new Vector3Int(1,0,0),
+                    new Vector3Int(-1,0,0),
+                    new Vector3Int(0,0,1),
+                    new Vector3Int(0,0,-1)
+                };
 
                 foreach (var dir in dirs)
                 {
                     Vector3Int neighbor = pos + dir;
                     if (!grid.InBounds(neighbor)) continue;
 
-                    // If the neighbor is a hallway, this edge is a doorway
                     if (grid[neighbor] == CellType.Hallway)
                     {
                         Vector3 basePos = (Vector3)pos + tileOffset;
-
-                        // Put the door halfway between room and corridor, raise it a bit
                         Vector3 doorPos = basePos + new Vector3(dir.x * 0.5f, doorCenterHeight, dir.z * 0.5f);
 
                         Quaternion rot = Quaternion.identity;
@@ -497,7 +545,6 @@ public class Generator3D : MonoBehaviour
                         RemoveWallAtPosition(doorPos);
 
                         Instantiate(doorFramePrefab, doorPos, rot, transform);
-
                     }
                 }
             }
@@ -506,7 +553,6 @@ public class Generator3D : MonoBehaviour
 
     void RemoveWallAtPosition(Vector3 position)
     {
-        // How close in XZ to count as "same edge"
         float radius = 0.6f;
 
         for (int i = spawnedWalls.Count - 1; i >= 0; i--)
@@ -520,7 +566,6 @@ public class Generator3D : MonoBehaviour
 
             Vector3 wallPos = wall.transform.position;
 
-            // Ignore height, compare in top-down view
             float distXZ = Vector2.Distance(
                 new Vector2(wallPos.x, wallPos.z),
                 new Vector2(position.x, position.z)
@@ -558,6 +603,4 @@ public class Generator3D : MonoBehaviour
             }
         }
     }
-
-
 }

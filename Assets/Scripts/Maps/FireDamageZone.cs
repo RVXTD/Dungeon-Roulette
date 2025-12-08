@@ -14,12 +14,25 @@ public class FireDamageZone : MonoBehaviour
 
     private bool isActive = true;
 
-    private Collider triggerCollider;
+    [Header("Internal References")]
+    [SerializeField] private Collider damageTriggerCollider;   // <-- trigger only
     private ParticleSystem[] fireParticles;
 
     private void Awake()
     {
-        triggerCollider = GetComponent<Collider>();
+        // If not assigned in Inspector, try to find a trigger collider on this object
+        if (damageTriggerCollider == null)
+        {
+            foreach (var col in GetComponents<Collider>())
+            {
+                if (col.isTrigger)
+                {
+                    damageTriggerCollider = col;
+                    break;
+                }
+            }
+        }
+
         fireParticles = GetComponentsInChildren<ParticleSystem>();
     }
 
@@ -28,7 +41,6 @@ public class FireDamageZone : MonoBehaviour
         isActive = startActive;
         ApplyActiveState();
 
-        // start the on/off loop
         StartCoroutine(FireCycle());
     }
 
@@ -38,13 +50,11 @@ public class FireDamageZone : MonoBehaviour
         {
             if (isActive)
             {
-                // stay ON
                 yield return new WaitForSeconds(activeDuration);
                 isActive = false;
             }
             else
             {
-                // stay OFF
                 yield return new WaitForSeconds(inactiveDuration);
                 isActive = true;
             }
@@ -55,11 +65,10 @@ public class FireDamageZone : MonoBehaviour
 
     private void ApplyActiveState()
     {
-        // Enable/disable collider so no damage when off
-        if (triggerCollider != null)
-            triggerCollider.enabled = isActive;
+        // Only toggle the trigger collider, NOT the floor collider
+        if (damageTriggerCollider != null)
+            damageTriggerCollider.enabled = isActive;
 
-        // Play/stop particle systems
         if (fireParticles != null)
         {
             foreach (var ps in fireParticles)
@@ -76,17 +85,14 @@ public class FireDamageZone : MonoBehaviour
 
     private void OnTriggerStay(Collider other)
     {
-        // extra safety: if somehow called while off, do nothing
         if (!isActive) return;
 
-        // --- PLAYER DAMAGE ---
         if (other.TryGetComponent<PlayerHealth>(out var player))
         {
             player.TakeDamage(playerDamagePerSecond * Time.deltaTime);
             return;
         }
 
-        // --- ENEMY DAMAGE ---
         if (other.TryGetComponent<EnemyHealth>(out var enemy))
         {
             enemy.TakeDamage(enemyDamagePerSecond * Time.deltaTime);

@@ -80,8 +80,30 @@ public class EnemyScript : MonoBehaviour
     {
         agent.stoppingDistance = Mathf.Max(0f, attackRange - 0.2f);
         agent.updateRotation = false;
+
+        // NEW: auto-find player if not assigned in inspector
+        if (player == null)
+        {
+            GameObject p = GameObject.FindGameObjectWithTag("Player");
+            if (p != null)
+            {
+                player = p.transform;
+            }
+            else
+            {
+                Debug.LogWarning("EnemyScript: No player assigned and no GameObject with tag 'Player' was found.");
+            }
+        }
+
+        // Debug: check navmesh status
+        if (agent != null)
+        {
+            Debug.Log($"EnemyScript on {name}: isOnNavMesh at Start = {agent.isOnNavMesh}");
+        }
+
         EnterPatrol();
     }
+
 
     void Update()
     {
