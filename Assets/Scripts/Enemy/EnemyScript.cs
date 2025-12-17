@@ -65,6 +65,10 @@ public class EnemyScript : MonoBehaviour
     private static readonly int BaseColorProp = Shader.PropertyToID("_BaseColor");
     private static readonly int ColorProp = Shader.PropertyToID("_Color");
 
+    // player reacquire
+    private const string PlayerTag = "Player";
+    private float nextPlayerSearchTime = 0f;
+
     void Awake()
     {
         agent = GetComponent<NavMeshAgent>();
@@ -81,32 +85,17 @@ public class EnemyScript : MonoBehaviour
         agent.stoppingDistance = Mathf.Max(0f, attackRange - 0.2f);
         agent.updateRotation = false;
 
-        // NEW: auto-find player if not assigned in inspector
-        if (player == null)
-        {
-            GameObject p = GameObject.FindGameObjectWithTag("Player");
-            if (p != null)
-            {
-                player = p.transform;
-            }
-            else
-            {
-                Debug.LogWarning("EnemyScript: No player assigned and no GameObject with tag 'Player' was found.");
-            }
-        }
+        TryResolvePlayer(force: true);
 
         // Debug: check navmesh status
-        if (agent != null)
-        {
-            Debug.Log($"EnemyScript on {name}: isOnNavMesh at Start = {agent.isOnNavMesh}");
-        }
+        Debug.Log($"EnemyScript on {name}: isOnNavMesh at Start = {agent.isOnNavMesh}");
 
         EnterPatrol();
     }
 
-
     void Update()
     {
+        // Freeze behavior
         if (isFrozen)
         {
             if (agent)
@@ -121,38 +110,40 @@ public class EnemyScript : MonoBehaviour
 
             freezeTimer -= Time.deltaTime;
             if (freezeTimer <= 0f)
-            {
                 Unfreeze();
-            }
 
             return;
         }
-        if (isDead || !player || PlayerHealth.PlayerIsDead)
+
+        // If enemy is dead, stop
+        if (isDead)
         {
-            if (agent)
-            {
-                agent.isStopped = true;
-                agent.velocity = Vector3.zero;
-                agent.ResetPath();
-            }
-
-            SetMoveSpeed(0f);
-
-            if (anim && PlayerHealth.PlayerIsDead)
-            {
-                anim.ResetTrigger(AttackTrigger);
-                anim.SetFloat(MoveSpeedHash, 0f);
-            }
-
+            StopAgentAndAnim();
             return;
+        }
+
+        // If player is dead (your static flag), stop AI
+        if (PlayerHealth.PlayerIsDead)
+        {
+            StopAgentAndAnim();
+            return;
+        }
+
+        // Player may be destroyed/recreated after restarting scene → reacquire
+        if (player == null)
+        {
+            TryResolvePlayer(force: false);
+            // If still not found yet, just idle this frame (don’t permanently lock state)
+            if (player == null)
+            {
+                StopAgentAndAnim();
+                return;
+            }
         }
 
         float dist = Vector3.Distance(transform.position, player.position);
 
-        // ------------------------------
-        // BASIC MOVEMENT AI
-        // Handles Patrol to Chase transitions based on player distance.
-        // ------------------------------
+        // Patrol <-> Chase state transitions
         if (currentState == EnemyState.Patrol && dist <= detectionRange)
             EnterChase();
         else if ((currentState == EnemyState.Chase || currentState == EnemyState.Attack) && dist > detectionRange)
@@ -165,7 +156,34 @@ public class EnemyScript : MonoBehaviour
             case EnemyState.Attack: AttackTick(dist); break;
         }
 
-        SetMoveSpeed(agent.velocity.magnitude);
+        SetMoveSpeed(agent != null ? agent.velocity.magnitude : 0f);
+    }
+
+    private void TryResolvePlayer(bool force)
+    {
+        if (!force && Time.time < nextPlayerSearchTime) return;
+        nextPlayerSearchTime = Time.time + 0.5f; // throttle searches
+
+        var p = GameObject.FindGameObjectWithTag(PlayerTag);
+        if (p != null) player = p.transform;
+    }
+
+    private void StopAgentAndAnim()
+    {
+        if (agent)
+        {
+            agent.isStopped = true;
+            agent.velocity = Vector3.zero;
+            agent.ResetPath();
+        }
+
+        SetMoveSpeed(0f);
+
+        if (anim)
+        {
+            anim.ResetTrigger(AttackTrigger);
+            anim.SetFloat(MoveSpeedHash, 0f);
+        }
     }
 
     // -------------------
@@ -176,11 +194,13 @@ public class EnemyScript : MonoBehaviour
         currentState = EnemyState.Patrol;
         isPausing = false;
         pauseTimer = 0f;
+
         if (agent)
         {
             agent.isStopped = false;
             agent.speed = patrolSpeed;
         }
+
         SetNextPatrolPoint(true);
     }
 
@@ -189,6 +209,7 @@ public class EnemyScript : MonoBehaviour
         currentState = EnemyState.Chase;
         isPausing = false;
         pauseTimer = 0f;
+
         if (agent)
         {
             agent.isStopped = false;
@@ -199,6 +220,7 @@ public class EnemyScript : MonoBehaviour
     private void EnterAttack()
     {
         currentState = EnemyState.Attack;
+
         if (agent)
         {
             agent.isStopped = true;
@@ -210,8 +232,7 @@ public class EnemyScript : MonoBehaviour
     }
 
     // ------------------------------
-    // BASIC MOVEMENT AI
-    // Patrol behavior: moves between random points and pauses briefly.
+    // Patrol
     // ------------------------------
     private void PatrolTick()
     {
@@ -273,8 +294,7 @@ public class EnemyScript : MonoBehaviour
     }
 
     // ------------------------------
-    // BASIC MOVEMENT AI
-    // Chase behavior: follows player using NavMeshAgent.
+    // Chase
     // ------------------------------
     private void ChaseTick(float distanceToPlayer)
     {
@@ -290,13 +310,11 @@ public class EnemyScript : MonoBehaviour
     }
 
     // ------------------------------
-    // ATTACK / COMBAT AI 
-    // Attack timing, hit windows, and cooldowns.
+    // Attack
     // ------------------------------
     private void AttackTick(float distanceToPlayer)
     {
         if (player == null) return;
-
         if (PlayerHealth.PlayerIsDead) return;
 
         Face(player.position);
@@ -331,9 +349,7 @@ public class EnemyScript : MonoBehaviour
             {
                 var dmg = player.GetComponent<IDamageable>();
                 if (dmg != null)
-                {
                     dmg.TakeDamage(attackDamage);
-                }
             }
         }
 
@@ -341,8 +357,7 @@ public class EnemyScript : MonoBehaviour
     }
 
     // ------------------------------
-    // HEALTH / FEEDBACK SYSTEM
-    // Enemy death and fade out visuals
+    // Death
     // ------------------------------
     public void DoDeath()
     {
@@ -391,7 +406,6 @@ public class EnemyScript : MonoBehaviour
         else gameObject.SetActive(false);
     }
 
-    // fade visuals
     private void PrepareInstancedTransparentMaterials()
     {
         _instancedMatsPerRenderer.Clear();
@@ -478,8 +492,9 @@ public class EnemyScript : MonoBehaviour
     {
         if (anim) anim.SetFloat(MoveSpeedHash, v);
     }
+
     // ------------------------------
-    // FREEZE CONTROL
+    // Freeze
     // ------------------------------
     public void FreezeForDuration(float duration)
     {
@@ -508,14 +523,10 @@ public class EnemyScript : MonoBehaviour
         isFrozen = false;
 
         if (agent)
-        {
             agent.isStopped = false;
-        }
 
         if (anim)
-        {
             anim.speed = 1f;
-        }
     }
 
     void OnDrawGizmosSelected()

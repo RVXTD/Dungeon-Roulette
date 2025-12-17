@@ -33,6 +33,7 @@ public class EnemyHealth : MonoBehaviour, IDamageable
     void Start()
     {
         currentHealth = maxHealth;
+        RoundManager.Instance?.RegisterEnemy();
     }
 
     public void TakeDamage(float amount)
@@ -69,6 +70,8 @@ public class EnemyHealth : MonoBehaviour, IDamageable
     private void Die()
     {
         Debug.Log($"{name} has died!");
+
+        RoundManager.Instance?.UnregisterEnemy();
 
         if (enemyScript != null)
             enemyScript.DoDeath();
