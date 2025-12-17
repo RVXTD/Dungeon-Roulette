@@ -12,6 +12,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Ork_destroyer2@run2
       objectReference: {fileID: 0}
+    - target: {fileID: 100238, guid: 737ac9a43fbb56942a6ad4430ff113fc, type: 3}
+      propertyPath: m_TagString
+      value: Enemy
+      objectReference: {fileID: 0}
     - target: {fileID: 400238, guid: 737ac9a43fbb56942a6ad4430ff113fc, type: 3}
       propertyPath: m_LocalScale.x
       value: 0.75
