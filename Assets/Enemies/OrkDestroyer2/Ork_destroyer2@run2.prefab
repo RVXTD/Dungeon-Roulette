@@ -213,12 +213,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::EnemyScript
   player: {fileID: 0}
   detectionRange: 15
-  attackRange: 2
+  attackRange: 1.5
   patrolRadius: 15
   patrolSpeed: 2
   chaseSpeed: 4
-  patrolPauseTime: 1
-  attackDamage: 10
+  patrolPauseTime: 2
+  attackDamage: 5
   timeBetweenAttacks: 3
   attackWindupTime: 0.4
   hitActiveTime: 0.3

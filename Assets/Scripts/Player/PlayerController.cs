@@ -14,52 +14,92 @@ public class SimplePlayerController : MonoBehaviour
     public float mouseSensitivity = 2f;
     public Transform cameraTransform;
 
-    // ---------------------------------------------
-    // PLAYER ABILITY SCRIPT (DASH)
-    // ---------------------------------------------
+    [Header("Ability Key")]
+    public KeyCode abilityKey = KeyCode.F;
+
+    // -------------------------
+    // ABILITIES (4 total)
+    // -------------------------
+    public enum AbilityType { Dash, Freeze, Thorns, Invincibility }
+
+    [Header("Current Ability (RoundManager sets this)")]
+    public AbilityType currentAbility = AbilityType.Dash;
+
     [Header("Dash Ability")]
-    public KeyCode dashKey = KeyCode.F;
     public float dashSpeed = 18f;
     public float dashDuration = 0.18f;
     public float dashCooldown = 1.0f;
     public bool allowAirDash = true;
 
-    // ---------------------------------------------
-    // NEW ABILITIES
-    // ---------------------------------------------
     [Header("Freeze Ability")]
-    public KeyCode freezeKey = KeyCode.Z;   // Freeze = Z
     public float freezeRadius = 10f;
     public float freezeDuration = 3f;
-    public LayerMask enemyLayerMask;
+    public float freezeCooldown = 10f;
 
     [Header("Thorns Ability")]
-    public KeyCode thornsKey = KeyCode.X;   // Thorns = X
     public float thornsDuration = 8f;
     public float thornsCooldown = 15f;
 
     [Header("Invincibility Ability")]
-    public KeyCode invincibleKey = KeyCode.C;  // Invincibility = C
     public float invincibleDuration = 5f;
     public float invincibleCooldown = 20f;
 
+    [Header("Freeze Targeting")]
+    public LayerMask enemyLayerMask;
+
     private CharacterController cc;
     private PlayerHealth playerHealth;
+    private PlayerStamina playerStamina;
 
     private float vertVelocity;
     private float yaw;
+
+    // dash runtime
     private bool isDashing = false;
     private bool hasAirDashed = false;
     private Vector3 lastPlanarMove = Vector3.zero;
-    private float nextDashTime = 0f;
 
-    private bool thornsOnCooldown = false;
-    private bool invincibleOnCooldown = false;
+    // ability meter state
+    private bool abilityRunning = false;
+    private bool abilityOnCooldown = false;
+    private float abilityDurationTimer = 0f;
+    private float abilityCooldownTimer = 0f;
+    private float activeAbilityDuration = 0f;
+    private float activeAbilityCooldown = 0f;
+
+    // -------------------------
+    // PUBLIC UI READ-ONLY
+    // -------------------------
+    public string CurrentAbilityName => currentAbility switch
+    {
+        AbilityType.Dash => "DASH",
+        AbilityType.Freeze => "FREEZE",
+        AbilityType.Thorns => "THORNS",
+        AbilityType.Invincibility => "INVINCIBLE",
+        _ => "ABILITY"
+    };
+
+    // 1 = ready, 1->0 while active, then 0->1 while cooling down
+    public float AbilityBar01
+    {
+        get
+        {
+            if (abilityRunning && activeAbilityDuration > 0.0001f)
+                return Mathf.Clamp01(1f - (abilityDurationTimer / activeAbilityDuration));
+
+            if (abilityOnCooldown && activeAbilityCooldown > 0.0001f)
+                return Mathf.Clamp01(abilityCooldownTimer / activeAbilityCooldown);
+
+            return 1f;
+        }
+    }
 
     void Awake()
     {
         cc = GetComponent<CharacterController>();
         playerHealth = GetComponent<PlayerHealth>();
+        playerStamina = GetComponent<PlayerStamina>();
+
         Cursor.lockState = CursorLockMode.Locked;
     }
 
@@ -85,18 +125,32 @@ public class SimplePlayerController : MonoBehaviour
         if (moveDir.sqrMagnitude > 0.0001f)
             lastPlanarMove = moveDir;
 
-        bool isPressingOnlyW = v > 0 && h == 0 && Input.GetKey(KeyCode.W);
-        float currentSpeed = isPressingOnlyW && Input.GetKey(KeyCode.LeftShift)
-            ? sprintSpeed
-            : moveSpeed;
+        // --- Sprint (stamina gated) ---
+        bool wantsSprint = Input.GetKey(KeyCode.LeftShift);
+        bool isMoving = moveDir.sqrMagnitude > 0.001f;
 
-        // --- Dash ---
-        TryStartDash(moveDir);
+        bool canSprintNow =
+            wantsSprint &&
+            isMoving &&
+            !isDashing &&
+            (playerStamina == null || playerStamina.CanSprint);
+
+        float currentSpeed = canSprintNow ? sprintSpeed : moveSpeed;
+
+        if (canSprintNow && playerStamina != null)
+            playerStamina.DrainWhileSprinting();
+
+        // ✅ Ability activation (F)
+        if (Input.GetKeyDown(abilityKey))
+        {
+            TryUseAbility(moveDir);
+        }
 
         // --- Gravity / Jump ---
         if (cc.isGrounded)
         {
             hasAirDashed = false;
+
             if (!isDashing)
                 vertVelocity = -1f;
 
@@ -109,29 +163,142 @@ public class SimplePlayerController : MonoBehaviour
                 vertVelocity += gravity * Time.deltaTime;
         }
 
-        // --- Normal movement when not dashing ---
+        // --- Movement when not dashing ---
         if (!isDashing)
         {
             Vector3 velocity = moveDir * currentSpeed;
             velocity.y = vertVelocity;
             cc.Move(velocity * Time.deltaTime);
         }
-
-        // --- Ability inputs (freeze, thorns, invincibility) ---
-        HandleAbilities();
     }
 
-    // -------------------------------------
-    // DASH
-    // -------------------------------------
-    private void TryStartDash(Vector3 moveDir)
+    // Called by RoundManager when a new round starts
+    public void SetAbility(AbilityType newAbility)
     {
-        if (isDashing || Time.time < nextDashTime) return;
-        if (!Input.GetKeyDown(dashKey)) return;
+        currentAbility = newAbility;
+
+        // clear any leftover buffs
+        if (playerHealth != null)
+        {
+            playerHealth.thornsActive = false;
+            playerHealth.isInvincible = false;
+        }
+
+        // reset bar to full (ready)
+        abilityRunning = false;
+        abilityOnCooldown = false;
+        abilityDurationTimer = 0f;
+        abilityCooldownTimer = 0f;
+        activeAbilityDuration = 0f;
+        activeAbilityCooldown = 0f;
+    }
+
+    private void TryUseAbility(Vector3 moveDir)
+    {
+        if (abilityRunning || abilityOnCooldown) return; // only one at a time
+        StartCoroutine(AbilityLifecycle(moveDir));
+    }
+
+    private IEnumerator AbilityLifecycle(Vector3 moveDir)
+    {
+        abilityRunning = true;
+
+        activeAbilityDuration = GetAbilityDuration(currentAbility);
+        activeAbilityCooldown = GetAbilityCooldown(currentAbility);
+
+        abilityDurationTimer = 0f;
+        abilityCooldownTimer = 0f;
+
+        // --- START ability effect ---
+        switch (currentAbility)
+        {
+            case AbilityType.Dash:
+                yield return StartCoroutine(DashRoutine(moveDir));
+                // DashRoutine already lasts dashDuration, so duration bar will drain during it.
+                break;
+
+            case AbilityType.Freeze:
+                ActivateFreeze();
+                // freezeDuration is “effect duration”, we still use it for the bar timing
+                break;
+
+            case AbilityType.Thorns:
+                if (playerHealth != null) playerHealth.thornsActive = true;
+                break;
+
+            case AbilityType.Invincibility:
+                if (playerHealth != null) playerHealth.isInvincible = true;
+                break;
+        }
+
+        // --- DURATION phase (drain bar) ---
+        while (abilityDurationTimer < activeAbilityDuration)
+        {
+            abilityDurationTimer += Time.deltaTime;
+            yield return null;
+        }
+
+        // --- END buffs if needed ---
+        switch (currentAbility)
+        {
+            case AbilityType.Thorns:
+                if (playerHealth != null) playerHealth.thornsActive = false;
+                break;
+
+            case AbilityType.Invincibility:
+                if (playerHealth != null) playerHealth.isInvincible = false;
+                break;
+        }
+
+        abilityRunning = false;
+
+        // --- COOLDOWN phase (fill bar) ---
+        abilityOnCooldown = true;
+        abilityCooldownTimer = 0f;
+
+        while (abilityCooldownTimer < activeAbilityCooldown)
+        {
+            abilityCooldownTimer += Time.deltaTime;
+            yield return null;
+        }
+
+        abilityOnCooldown = false;
+        activeAbilityDuration = 0f;
+        activeAbilityCooldown = 0f;
+    }
+
+    private float GetAbilityDuration(AbilityType a)
+    {
+        return a switch
+        {
+            AbilityType.Dash => dashDuration,
+            AbilityType.Freeze => freezeDuration,
+            AbilityType.Thorns => thornsDuration,
+            AbilityType.Invincibility => invincibleDuration,
+            _ => 0f
+        };
+    }
+
+    private float GetAbilityCooldown(AbilityType a)
+    {
+        return a switch
+        {
+            AbilityType.Dash => dashCooldown,
+            AbilityType.Freeze => freezeCooldown,
+            AbilityType.Thorns => thornsCooldown,
+            AbilityType.Invincibility => invincibleCooldown,
+            _ => 1f
+        };
+    }
+
+    // ------------------ DASH ------------------
+    private IEnumerator DashRoutine(Vector3 moveDir)
+    {
+        if (isDashing) yield break;
 
         if (!cc.isGrounded)
         {
-            if (!allowAirDash || hasAirDashed) return;
+            if (!allowAirDash || hasAirDashed) yield break;
             hasAirDashed = true;
         }
 
@@ -139,11 +306,6 @@ public class SimplePlayerController : MonoBehaviour
             ? moveDir
             : (lastPlanarMove.sqrMagnitude > 0.001f ? lastPlanarMove : transform.forward);
 
-        StartCoroutine(DashRoutine(dashDir));
-    }
-
-    private IEnumerator DashRoutine(Vector3 dashDir)
-    {
         isDashing = true;
         float savedVert = vertVelocity;
         vertVelocity = 0f;
@@ -159,7 +321,6 @@ public class SimplePlayerController : MonoBehaviour
         }
 
         isDashing = false;
-        nextDashTime = Time.time + dashCooldown;
 
         if (!cc.isGrounded)
             vertVelocity = savedVert;
@@ -167,75 +328,21 @@ public class SimplePlayerController : MonoBehaviour
             vertVelocity = -1f;
     }
 
-    // -------------------------------------
-    // NEW ABILITIES
-    // -------------------------------------
-    private void HandleAbilities()
-    {
-        if (Input.GetKeyDown(freezeKey))
-        {
-            ActivateFreeze();
-        }
-
-        if (Input.GetKeyDown(thornsKey))
-        {
-            if (!thornsOnCooldown && playerHealth != null)
-                StartCoroutine(ThornsRoutine());
-        }
-
-        if (Input.GetKeyDown(invincibleKey))
-        {
-            if (!invincibleOnCooldown && playerHealth != null)
-                StartCoroutine(InvincibilityRoutine());
-        }
-    }
-
-    // Freeze all enemies in a radius
+    // ------------------ FREEZE ------------------
     private void ActivateFreeze()
     {
-        // Grab everything in range; we’ll filter by EnemyScript
         Collider[] hits = Physics.OverlapSphere(transform.position, freezeRadius);
 
         foreach (var hit in hits)
         {
             EnemyScript enemy = hit.GetComponentInParent<EnemyScript>();
             if (enemy != null)
-            {
                 enemy.FreezeForDuration(freezeDuration);
-            }
         }
     }
 
-    // Thorns buff: reflect damage while active
-    private IEnumerator ThornsRoutine()
-    {
-        thornsOnCooldown = true;
-        playerHealth.thornsActive = true;
-
-        yield return new WaitForSeconds(thornsDuration);
-
-        playerHealth.thornsActive = false;
-
-        yield return new WaitForSeconds(thornsCooldown);
-        thornsOnCooldown = false;
-    }
-
-    // Invincibility buff: ignore all damage while active
-    private IEnumerator InvincibilityRoutine()
-    {
-        invincibleOnCooldown = true;
-        playerHealth.isInvincible = true;
-
-        yield return new WaitForSeconds(invincibleDuration);
-
-        playerHealth.isInvincible = false;
-
-        yield return new WaitForSeconds(invincibleCooldown);
-        invincibleOnCooldown = false;
-    }
     private void OnDrawGizmosSelected()
     {
-        // Only run in editor when object is selected
         Gizmos.color = Color.cyan;
         Gizmos.DrawWireSphere(transform.position, freezeRadius);
     }

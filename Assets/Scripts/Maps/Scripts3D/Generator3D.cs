@@ -68,6 +68,10 @@ public class Generator3D : MonoBehaviour
     [SerializeField] bool addCeilingsToRooms = true;
     [SerializeField] bool addCeilingsToHallways = true;
 
+    [SerializeField] GameObject torchPrefab;
+    [SerializeField] GameObject columnPrefab;
+
+
     Random random;
 
     Grid3D<CellType> grid;
@@ -81,7 +85,17 @@ public class Generator3D : MonoBehaviour
 
     void Start()
     {
-        random = new Random(0);
+        GenerateDungeon();
+    }
+
+    /// <summary>
+    /// Public method you can call from RoundManager to make a new dungeon.
+    /// </summary>
+    public void GenerateDungeon()
+    {
+        // New random seed every generation (so the dungeon changes each round)
+        random = new Random();
+
         grid = new Grid3D<CellType>(size, Vector3Int.zero);
         rooms = new List<Room>();
 
@@ -94,6 +108,7 @@ public class Generator3D : MonoBehaviour
         BuildWallsForHallways();
         PlaceDoorsAtRoomHallwayEdges();
         BuildCeilings();
+        PlaceColumnsInCorners();
 
         // --- navmesh setup ---
         if (navSurface == null)
@@ -105,9 +120,30 @@ public class Generator3D : MonoBehaviour
         // --- room centers + enemy spawns ---
         RecordRoomCenters();
         FindObjectOfType<SpawnManager>()?.Spawn();
+    }
 
-        StartCoroutine(RebuildNavmeshNextFrame());
+    /// <summary>
+    /// Clears the generated dungeon from under this Generator3D object.
+    /// Call this before GenerateDungeon() when starting a new round.
+    /// </summary>
+    public void ClearDungeon()
+    {
+        // Destroy everything spawned under this generator
+        for (int i = transform.childCount - 1; i >= 0; i--)
+        {
+            Destroy(transform.GetChild(i).gameObject);
+        }
 
+        // Clear runtime lists
+        spawnedWalls.Clear();
+        roomCenters.Clear();
+        selectedEdges = null;
+        delaunay = null;
+        _roomVertices = null;
+
+        // Reset references
+        grid = null;
+        rooms = null;
     }
 
     // Wait one frame so all instantiated tiles/walls/doors exist,
@@ -313,7 +349,7 @@ public class Generator3D : MonoBehaviour
                     if (i > 0)
                     {
                         var prev = path[i - 1];
-                        Vector3Int dir = current - prev;  // e.g. (1,0,0) or (0,0,-1)
+                        Vector3Int dir = current - prev;
 
                         // hallway going along X → widen along Z
                         if (Mathf.Abs(dir.x) > 0)
@@ -340,7 +376,6 @@ public class Generator3D : MonoBehaviour
             }
         }
     }
-
 
     // ---------- VISUAL PLACEMENT HELPERS ----------
 
@@ -398,8 +433,6 @@ public class Generator3D : MonoBehaviour
         BuildWallsForRoom(bounds);
     }
 
-
-
     void BuildWallsForRoom(BoundsInt roomBounds)
     {
         if (wallPrefab == null) return;
@@ -429,7 +462,21 @@ public class Generator3D : MonoBehaviour
 
                     var wall = Instantiate(wallPrefab, wallPos, rot, transform);
                     spawnedWalls.Add(wall);
+
+                    // --- TORCH LOGIC ADDED HERE ---
+                    if (torchPrefab != null && random.NextDouble() < 0.2f)
+                    {
+                        GameObject torch = Instantiate(torchPrefab, wallPos, rot, transform);
+                        torch.transform.SetParent(wall.transform);
+
+                        // OFFSET FIXES (Adjust these if your model is weird)
+                        torch.transform.Translate(Vector3.up * 0.5f);
+                        torch.transform.Translate(Vector3.forward * 0.1f);
+                        // If bracket is backwards, uncomment this:
+                        // torch.transform.Rotate(0, 180f, 0);
+                    }
                 }
+
             }
         }
     }
@@ -600,6 +647,51 @@ public class Generator3D : MonoBehaviour
 
                 Vector3 worldPos = (Vector3)pos + tileOffset + new Vector3(0f, ceilingHeight, 0f);
                 Instantiate(ceilingTilePrefab, worldPos, Quaternion.identity, transform);
+            }
+        }
+    }
+    void PlaceColumnsInCorners()
+    {
+        if (columnPrefab == null) return;
+
+        foreach (var room in rooms)
+        {
+            // Get 4 corner positions (integers)
+            int minX = room.bounds.xMin;
+            int maxX = room.bounds.xMax;
+            int minZ = room.bounds.zMin;
+            int maxZ = room.bounds.zMax;
+
+            Vector3[] corners = new Vector3[] {
+                new Vector3(minX, 0, minZ),
+                new Vector3(maxX, 0, minZ),
+                new Vector3(minX, 0, maxZ),
+                new Vector3(maxX, 0, maxZ)
+            };
+
+            foreach (var pos in corners)
+            {
+                // PHYSICS CHECK:
+                // Check a 1-meter radius around the corner for any objects.
+                // If we find a "Door" or "DoorFrame", we SKIP this column.
+
+                Collider[] hitColliders = Physics.OverlapSphere(pos, 1.0f);
+                bool isNearDoor = false;
+
+                foreach (var hit in hitColliders)
+                {
+                    // CHANGE "Door" IF YOUR PREFAB IS NAMED DIFFERENTLY (e.g. "Archway")
+                    if (hit.gameObject.name.Contains("Door") || hit.gameObject.name.Contains("Frame"))
+                    {
+                        isNearDoor = true;
+                        break;
+                    }
+                }
+
+                if (isNearDoor) continue; // Found a door? Skip!
+
+                // Otherwise, spawn the column
+                Instantiate(columnPrefab, pos, Quaternion.identity, transform);
             }
         }
     }
